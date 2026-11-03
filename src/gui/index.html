@@ -111,12 +111,13 @@
     <label>轮询间隔 <input id="setPoll" type="number" min="1" max="10" /> 秒（越小开播发现越快, 建议 2-3）</label>
     <label>最大同时录制数 <input id="setMax" type="number" min="1" max="20" /></label>
     <label>录制画质 <select id="setQuality">
+      <option value="lowest">最低画质(最省空间)</option>
       <option value="highest">最高画质(原画)</option>
       <option value="FULL_HD1">原画档</option>
       <option value="HD1">蓝光</option>
       <option value="SD1">超清</option>
       <option value="SD2">高清</option>
-    </select>（该档不存在时自动向下回落）</label>
+    </select>（指定档不存在时自动向下回落）</label>
     <label>保存路径 <input id="setOutDir" type="text" placeholder="recordings = 应用目录下(可填绝对路径)" /></label>
     <label>磁盘最低剩余 <input id="setDisk" type="number" min="0" max="500" /> GB（低于即停止录制）</label>
     <label>定时分段 <input id="setSeg" type="text" placeholder="90 = 分钟; 500MB = 按大小; 0 = 不分段" /></label>

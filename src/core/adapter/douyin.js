@@ -15,11 +15,34 @@ function pickBestFlv(flv) {
   return flv[keys[0]] || '';
 }
 
-// 画质偏好选择(对齐 biliLive-tools quality: "highest"): prefer 档不存在时自动向下回落
+// 画质偏好选择:
+//   highest  → 原画优先(默认)
+//   lowest   → 最省流量的档位, 用于省硬盘
+//   其他     → 指定档位, 该档不存在时向下回落
 const PREFER_RANK = ['FULL_HD1', 'HD1', 'SD1', 'SD2'];
+
+// 按画质从高到低排序; 未知档位排在最后(不能当成高清)
+function sortedByQuality(flv) {
+  const keys = Object.keys(flv || {});
+  return keys.sort((a, b) => tierScore(a, flv[a]) - tierScore(b, flv[b]));
+}
+
+// 取最低画质: 档位表里排最后的那个。
+// 若平台只给了一个档位, 那就是它本身 —— 没有更低的可选。
+function pickLowestFlv(flv) {
+  const keys = sortedByQuality(flv);
+  if (!keys.length) return '';
+  // 未知档位(score 99)不应因为"排最后"就被当成最低画质,
+  // 优先在已知档位里选最低; 全都未知时才退回原始顺序的最后一个。
+  const known = keys.filter((k) => tierScore(k, flv[k]) < 99);
+  const pick = known.length ? known[known.length - 1] : keys[keys.length - 1];
+  return flv[pick] || '';
+}
+
 function pickFlv(flv, prefer) {
   const keys = Object.keys(flv || {});
   if (!keys.length) return '';
+  if (prefer === 'lowest') return pickLowestFlv(flv);
   if (prefer && prefer !== 'highest') {
     let i = PREFER_RANK.indexOf(prefer);
     for (; i >= 0 && i < PREFER_RANK.length; i++) {
@@ -48,4 +71,13 @@ function normalizeEnter(json, rid) {
   };
 }
 
-module.exports = { normalizeEnter, pickBestFlv, pickFlv };
+// 选流: 优先按画质偏好从 flv 表里选; flv 为空时退回调用方提供的候选地址。
+// 注意 fallback 只在 flv 完全为空时使用 —— 不能拿它给某个缺失档位兜底,
+// 否则 "最低画质" 会被悄悄换成原画, 与省空间的意图相反。
+function resolveStreamUrl(flv, prefer, fallback) {
+  const picked = pickFlv(flv, prefer);
+  if (picked) return picked;
+  return typeof fallback === 'string' ? fallback : '';
+}
+
+module.exports = { normalizeEnter, pickBestFlv, pickFlv, pickLowestFlv, resolveStreamUrl };

@@ -90,7 +90,7 @@ npm run dist:mac    # macOS dmg (x64 + arm64)
 | `maxConcurrentRecordings` | 6 | 最大同时录制数 |
 | `minFreeGB` | 5 | 磁盘低于此值停止开新录制 |
 | `segment` | `"0"` | 分段策略。`0`=整场不分段，`90`=90 分钟，`500MB`=按大小 |
-| `quality` | `highest` | 画质偏好，该档不存在时自动向下回落 |
+| `quality` | `highest` | 画质偏好：`highest` 原画 / `lowest` 最低（省空间）/ 指定档位。指定档不存在时向下回落 |
 | `autoPartMerge` | true | 断流产生的分片最终合并回一个文件 |
 | `keepDays` | 0 | 录像保留天数，0 = 永久 |
 | `postConcurrency` | 2 | 后处理并发，负载高时可调回 1 |

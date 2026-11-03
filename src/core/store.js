@@ -17,7 +17,7 @@ const DEFAULT = {
     maxConcurrentRecordings: 6,
     keepRaw: true,     // 兼容旧配置字段; 当前版本只产出单一录像文件, 该值不再影响产物
     segment: '0',      // 默认整场保存, 0=不分段
-    quality: 'highest', // 画质偏好: highest=最高(原画), 可降选 FULL_HD1/HD1/SD1/SD2, 无该档自动回落
+    quality: 'highest', // 画质偏好: highest=最高(原画), lowest=最低(省空间), 或指定 FULL_HD1/HD1/SD1/SD2
     minSizeMB: 0,      // 默认保留并处理短场内容
     autoPartMerge: true, // 相邻分片自动合并(断流重连/轮换的分片无缝并回一个文件, 对齐 biliLive-tools)
     preventSleep: false, // 录制期间阻止系统休眠

@@ -9,7 +9,7 @@ const { ROOT } = require('./store');
 const { DouyinSession } = require('./session');
 const { Recorder } = require('./recorder');
 const { PostProcessor } = require('./postprocess');
-const { pickFlv } = require('./adapter/douyin');
+const { resolveStreamUrl } = require('./adapter/douyin');
 const {roomDirectory,recordingDirs,locateHistoryFile}=require('./recording-paths');
 const {reconcileHistory}=require('./history-reconcile');
 const {writeJson}=require('../util/atomic-json');
@@ -493,7 +493,7 @@ class Scheduler {
         log.warn(`[${task.lastInfo?.nickname || task.rid}] 恢复时发现已下播, 等待轮询收尾`);
         return {ok:false,error:'主播已下播，无法继续录制；正在等待本场收尾'};
       }
-      const resumed = task.rec.resume(pickFlv(info.flv, this.cfg.settings.quality) || info.best);
+      const resumed = task.rec.resume(resolveStreamUrl(info.flv, this.cfg.settings.quality, info.best));
       if (!resumed) throw new Error('录制器尚未能恢复');
       task.paused = false;
       log.info(`[${info.nickname || task.rid}] ⏵ 继续录制(新分片)`);
@@ -522,7 +522,7 @@ class Scheduler {
       this.onEvent && this.onEvent('diskfull', null);
       return;
     }
-    const url = pickFlv(info.flv, this.cfg.settings.quality) || info.best;
+    const url = resolveStreamUrl(info.flv, this.cfg.settings.quality, info.best);
     if (typeof url !== 'string' || !/^https?:\/\/\S+$/i.test(url)) throw new Error('当前直播没有可用的拉流地址, 稍后重试');
     const name = safeName(info.nickname || task.item.nickname || task.item.name || task.rid);
     const dir=roomDirectory(this.outDir,task.rid,name);
@@ -546,7 +546,7 @@ class Scheduler {
     rec.getUrl = () => {
       const t = this.tasks.get(task.rid);
       if (!t || !t.lastInfo) return '';
-      return pickFlv(t.lastInfo.flv, this.cfg.settings.quality) || t.lastInfo.best || '';
+      return resolveStreamUrl(t.lastInfo.flv, this.cfg.settings.quality, t.lastInfo.best);
     };
     try {
       rec.start(url);
@@ -713,7 +713,7 @@ class Scheduler {
       s.segment = patch.segment.trim();
     }
     if (Number.isFinite(+patch.segmentMin)) s.segmentMin = Math.min(720, Math.max(0, +patch.segmentMin));
-    if (typeof patch.quality === 'string' && ['highest', 'FULL_HD1', 'HD1', 'SD1', 'SD2'].includes(patch.quality)) s.quality = patch.quality;
+    if (typeof patch.quality === 'string' && ['highest', 'lowest', 'FULL_HD1', 'HD1', 'SD1', 'SD2'].includes(patch.quality)) s.quality = patch.quality;
     if (Number.isFinite(+patch.minSizeMB)) s.minSizeMB = Math.min(100000, Math.max(0, +patch.minSizeMB));
     if (typeof patch.autoPartMerge === 'boolean') s.autoPartMerge = patch.autoPartMerge;
     if (typeof patch.preventSleep === 'boolean') s.preventSleep = patch.preventSleep;
