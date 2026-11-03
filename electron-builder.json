@@ -8,16 +8,27 @@
   "files": [
     "src/**/*",
     "package.json",
-    "!logs/**",
-    "!recordings/**",
-    "!work/**",
-    "!dist/**",
-    "!.workbuddy-ai/**"
+    "!**/logs/**",
+    "!**/recordings/**",
+    "!**/work/**",
+    "!**/dist/**",
+    "!**/.workbuddy-ai/**",
+    "!**/*.log",
+    "!config.json",
+    "!config.json.*",
+    "!history.json",
+    "!history.json.*",
+    "!recording-jobs.json",
+    "!recording-jobs.json.*"
   ],
   "extraResources": [
     {
       "from": "启动直播录制.command",
       "to": "启动直播录制.command"
+    },
+    {
+      "from": "使用说明-macOS.md",
+      "to": "使用说明-macOS.md"
     }
   ],
   "asar": true,
