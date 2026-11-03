@@ -30,6 +30,32 @@ if (!app.requestSingleInstanceLock()) {
   const RID_RE = /^\d{6,13}$/;
 
   // ---------- 窗口 ----------
+  // 显示器热插拔/位置未指定时, 窗口可能落在屏幕外而"看起来没启动"。
+  // 只保留与任一屏幕工作区有实际重叠的窗口位置, 否则回到主屏居中。
+  function ensureOnScreen(win) {
+    try {
+      const { screen } = require('electron');
+      const b = win.getBounds();
+      const visible = screen.getAllDisplays().some((d) => {
+        const w = d.workArea;
+        return b.x < w.x + w.width - 80 && b.x + b.width > w.x + 80 &&
+               b.y < w.y + w.height - 40 && b.y + b.height > w.y + 40;
+      });
+      if (visible) return false;
+      const area = screen.getPrimaryDisplay().workArea;
+      win.setBounds({
+        x: Math.round(area.x + (area.width - b.width) / 2),
+        y: Math.round(area.y + (area.height - b.height) / 2),
+        width: b.width,
+        height: b.height,
+      });
+      return true;
+    } catch (error) {
+      log.warn('[gui] 窗口位置校正失败:', error.message);
+      return false;
+    }
+  }
+
   function createWindow() {
     mainWin = new BrowserWindow({
       width: 1180,
@@ -44,6 +70,7 @@ if (!app.requestSingleInstanceLock()) {
         nodeIntegration: false,
       },
     });
+    if (ensureOnScreen(mainWin)) log.info('[gui] 窗口原位置不在任何屏幕内, 已移回主屏居中');
     mainWin.loadFile(path.join(__dirname, 'gui', 'index.html'));
     let failures=[];
     mainWin.webContents.on('render-process-gone',(_e,details)=>{
@@ -104,8 +131,19 @@ if (!app.requestSingleInstanceLock()) {
     // 窗口可能已被销毁而引用仍在(渲染器反复崩溃/异常路径): 此时重建而非抛
     // "Object has been destroyed"(该异常曾让双击快捷方式/托盘点击全部无响应)
     if (!mainWin || mainWin.isDestroyed()) return createWindow();
+    if (mainWin.isMinimized()) mainWin.restore();
     mainWin.show();
     mainWin.focus();
+    // macOS: 仅在后台运行时, 光 show()+focus() 不一定会把窗口提到最前,
+    // 需要同时把应用本身激活(dock 图标有对应句柄)。
+    if (process.platform === 'darwin') {
+      try {
+        if (app.dock) app.dock.show();
+        app.focus({ steal: true });
+      } catch (error) {
+        log.warn('[gui] 激活应用失败:', error.message);
+      }
+    }
   }
 
   // ---------- Webhook 通知(防SSRF: 仅公网 http/https, 拒绝内网/环回/保留地址) ----------
