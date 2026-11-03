@@ -45,7 +45,7 @@ class Recorder {
   constructor(basePath) {
     this.base = basePath; // 不含扩展名
     this.part = 0;
-    this.partStarts = []; // partStarts[n] = 第n分片起录墙钟时间(供弹幕对齐)
+    this.partStarts = []; // partStarts[n] = 第n分片起录墙钟时间(供定时分段计时)
     this.proc = null;
     this.stopped = false;
     this.paused = false;
@@ -277,7 +277,7 @@ class Recorder {
     return true;
   }
 
-  // 取媒体时长(秒, 失败返回0) — 供合并后弹幕时间轴重对齐
+  // 取媒体时长(秒, 失败返回0) — 供合并与完整性核对
   // ffmpeg-static 不带 ffprobe: 复用 _runFfmpeg(数组参数)跑 ffmpeg -i, 从 Duration 行解析
   // 调用方仅有 mergeParts/consolidateMp4s, 传入路径均产自 flvPath/mp4Path(已过校验的前缀)
   async _probeDuration(file) {
@@ -319,7 +319,7 @@ class Recorder {
   }
 
   // 相邻分片无缝合并(对齐 biliLive-tools autoPartMerge):
-  // 断流重连/轮换产生的多个FLV分片 concat 直拷合并回 part1, 弹幕时间轴随 partStarts[1] 保持连续
+  // 断流重连/轮换产生的多个FLV分片 concat 直拷合并回 part1
   _processingTimeout(files) {
     const bytes = files.reduce((n, p) => n + this._sizeOf(p), 0);
     return Math.max(120000, Math.ceil(bytes / 1073741824) * 120000);
@@ -381,7 +381,6 @@ class Recorder {
   }
 
   _commitMerge(plan){
-    this.mergedDurations=plan.durations;this.mergedSegStarts=plan.starts;this.mergedReplayOffsets=plan.offsets;
     this.mergedFromParts=plan.originalParts;this.mergedInputs=plan.files.filter(f=>f!==plan.destination);this.mergeDestination=plan.destination;
     for(const part of plan.emptyParts||[])for(const file of [this.flvPath(part),this.mp4Path(part)])if(file!==plan.destination&&fs.existsSync(file)&&this._sizeOf(file)===0)this.mergedInputs.push(file);
     this.partStarts[1]=plan.starts[0];this.part=1;this.partStarts.length=2;this.emptyParts.clear();this.mergePlan=null;
@@ -442,7 +441,7 @@ class Recorder {
       if(!parts.has(part)||m[2]==='flv')parts.set(part,file);
     }
     for(const [part,file] of [...parts].sort((a,b)=>a[0]-b[0])){const stat=await fs.promises.stat(path.join(path.dirname(this.base),file));this.part=Math.max(this.part,part);if(!this.partStarts[part])this.partStarts[part]=stat.birthtimeMs||stat.mtimeMs;extra=true;}
-    if(extra){const note='恢复了任务记录之外的额外分片，其弹幕起点按文件创建时间推定';if(!this.notices.includes(note))this.notices.push(note);this.checkpoint();}
+    if(extra){const note='恢复了任务记录之外的额外分片，其起点按文件创建时间推定';if(!this.notices.includes(note))this.notices.push(note);this.checkpoint();}
   }
 
   async _mergeFiles(extension) {
@@ -506,7 +505,7 @@ class Recorder {
       const validation = await this.validateMedia(output);
       if (!validation.ok) throw new Error('拼接完整性检查失败: ' + validation.stderr.slice(0, 180));
       const identity=fs.statSync(output);
-      const plan={files,output,destination,identity:{ino:identity.ino,dev:identity.dev,size:identity.size},originalParts:this.part,emptyParts:[...this.emptyParts],durations,starts:indices.map(i=>this.partStarts[i]||this.startedAt),offsets:scans.map((_s,i)=>i>0&&cuts[i-1]!==null?scans[i-1].duration-durations[i-1]:0)};
+      const plan={files,output,destination,identity:{ino:identity.ino,dev:identity.dev,size:identity.size},originalParts:this.part,emptyParts:[...this.emptyParts],durations,starts:indices.map(i=>this.partStarts[i]||this.startedAt)};
       this.mergePlan=plan;if(this.checkpoint()===false)throw new Error('任务记录暂不可写，原分片保留');
       // Only commit timeline metadata after the replacement has actually succeeded.
       this._publish(output, destination);

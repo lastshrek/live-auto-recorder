@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const root=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'lr-stability-'));process.chdir(root);process.env.LR_LOG_DIR=path.join(root,'logs');
 const {Scheduler}=require('../src/core/scheduler'),{Recorder,createFfmpegRunner}=require('../src/core/recorder'),{PostProcessor}=require('../src/core/postprocess');
-const {RecoveryController}=require('../src/core/recovery'),{JobStore,restoreRecorder}=require('../src/core/job-store'),{inspectFlvTailAsync}=require('../src/core/flv-tail-async'),{DanmakuCapture}=require('../src/core/danmaku');
+const {RecoveryController}=require('../src/core/recovery'),{JobStore,restoreRecorder}=require('../src/core/job-store'),{inspectFlvTailAsync}=require('../src/core/flv-tail-async');
 const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream');const sleep=ms=>new Promise(r=>setTimeout(r,ms));const ff=createFfmpegRunner();let source;
 async function command(args){const r=await ff(args,30000);assert.equal(r.code,0,r.stderr);}
 async function fixture(){if(!source){source=path.join(root,'fixture.flv');await command(['-y','-v','error','-f','lavfi','-i','testsrc2=size=320x240:rate=15','-f','lavfi','-i','sine=frequency=440','-t','8','-c:v','libx264','-preset','ultrafast','-g','15','-c:a','aac','-f','flv',source]);}return source;}
@@ -9,7 +9,7 @@ function scheduler(dir){
  const s=Object.create(Scheduler.prototype);s.cfg={watchlist:[],settings:{outputDir:dir,minFreeGB:0,maxConcurrentRecordings:2,autoPartMerge:true,minSizeMB:0,keepRaw:true,keepDays:0}};s.outDir=dir;s.tasks=new Map();s.timers=new Map();s.history=[];s.historyFile=path.join(dir,'history.json');s.post=new PostProcessor(s.cfg.settings);s.freeBytes=()=>1024**4;s.sess={};s.recovery=new RecoveryController(s,path.join(dir,'jobs.json'));return s;
 }
 async function job(name,parts=1,register=true){
- const dir=fs.mkdtempSync(path.join(root,name+'-')),s=scheduler(dir),rec=new Recorder(path.join(dir,'主播_123456_20261026_100000'));rec.part=parts;rec.startedAt=Date.now()-20000;rec.partStarts=[0,rec.startedAt,rec.startedAt+12000];rec.settings={...s.cfg.settings};fs.copyFileSync(await fixture(),rec.flvPath(parts));fs.writeFileSync(rec.base+'.danmaku.jsonl',JSON.stringify({t:rec.partStarts[parts]+100,text:'甲：验证评论'})+'\n');
+ const dir=fs.mkdtempSync(path.join(root,name+'-')),s=scheduler(dir),rec=new Recorder(path.join(dir,'主播_123456_20261026_100000'));rec.part=parts;rec.startedAt=Date.now()-20000;rec.partStarts=[0,rec.startedAt,rec.startedAt+12000];rec.settings={...s.cfg.settings};fs.copyFileSync(await fixture(),rec.flvPath(parts));
  const task={rid:'123456',key:'123456',item:{},state:'recording',rec,basePath:rec.base,recorderStartedAt:rec.startedAt,dm:{stop:async()=>{}},lastInfo:{nickname:'主播',title:'故障测试',live:false}};s.tasks.set(task.key,task);if(register)s.recovery.begin(rec,task);return {s,task,rec,dir};
 }
 async function drain(post){for(let i=0;i<300&&post.busy;i++)await sleep(50);assert.equal(post.busy,false,'postprocessor did not drain');}
@@ -70,7 +70,7 @@ test('an admitted task finishes its subtitle stage after quiet hours begin while
  await s._stopJob(task,'下播');await drain(s.post);
  assert.equal(s.recovery.store.get(rec.jobId).status,'done');assert.equal(s.history[0].files.length,1);
  const next=new Recorder(path.join(path.dirname(rec.base),'新主播_654321_20261026_230100'));next.part=1;next.settings={...s.cfg.settings};next.startedAt=Date.now();next.partStarts=[0,next.startedAt];fs.copyFileSync(await fixture(),next.flvPath(1));
- const nextTask={rid:'654321',item:{},rec:next,basePath:next.base,recorderStartedAt:next.startedAt,lastInfo:{nickname:'新主播'},dm:{stop:async()=>{}}};s.recovery.begin(next,nextTask);
+ const nextTask={rid:'654321',item:{},rec:next,basePath:next.base,recorderStartedAt:next.startedAt,lastInfo:{nickname:'新主播'}};s.recovery.begin(next,nextTask);
  const result=await s.recovery.processStopped(nextTask,next,s.post.begin(next,'新主播'));assert.equal(result.quiet,true);assert.equal(fs.existsSync(next.mp4Path(1)),false);
 });
 test('a queued subtitle job survives quiet shutdown and resumes when quiet hours are disabled',async()=>{
@@ -119,12 +119,12 @@ test('zero disk space defers work durably and resumes after space returns',async
  const result=await s._stopJob(task,'磁盘空间不足');assert.equal(result.deferred,true);assert.equal(writes,0);assert.ok(fs.existsSync(rec.flvPath(1)));assert.equal(fs.existsSync(rec.mp4Path(1)),false);assert.equal(s.post.busy,false);assert.equal(s.recovery.store.get(rec.jobId).status,'waiting');
  s.freeBytes=()=>1024**4;await s.recovery.retry(rec.jobId,true);await drain(s.post);assert.equal(s.recovery.store.get(rec.jobId).status,'done');assertFinalVideos(s,rec);
 });
-test('recording journal restores exact part starts and finishes both versions after restart',async()=>{
+test('recording journal restores and merges parts after restart',async()=>{
  const {s,task,rec,dir}=await job('restart-journal',2);
  await command(['-y','-v','error','-ss','0','-i',await fixture(),'-t','4','-c','copy',rec.flvPath(1)]);
  await command(['-y','-v','error','-ss','4','-i',await fixture(),'-t','4','-c','copy',rec.flvPath(2)]);rec.checkpoint();
- const expected=[rec.partStarts[1],rec.partStarts[2]];const fresh=scheduler(dir);await fresh.recovery.start();await drain(fresh.post);fresh.recovery.close();
- const state=fresh.recovery.store.get(rec.jobId);assert.ok(['done','recovered'].includes(state.status),state.error);assert.deepEqual(state.recorder.mergedSegStarts,expected);assertFinalVideos(fresh,rec);assert.equal(fresh.history[0].files.length,1);
+ const fresh=scheduler(dir);await fresh.recovery.start();await drain(fresh.post);fresh.recovery.close();
+ const state=fresh.recovery.store.get(rec.jobId);assert.ok(['done','recovered'].includes(state.status),state.error);assert.equal(state.recorder.part,1);assertFinalVideos(fresh,rec);assert.equal(fresh.history[0].files.length,1);
 });
 test('legacy orphan FLV is found and sealed automatically on startup',async()=>{
  const {s,rec}=await job('legacy-recovery',1,false);await s.recovery.start();await drain(s.post);s.recovery.close();
@@ -137,14 +137,6 @@ test('a failed job remains visible after restart even when automatic retry is ex
 test('shutdown does not hang on a job waiting for disk space',async()=>{
  const {s,task,rec}=await job('shutdown-wait');s.freeBytes=()=>0;await s._stopJob(task,'磁盘空间不足');
  await Promise.race([s.shutdown(),sleep(2000).then(()=>{throw Error('shutdown blocked on waiting job');})]);assert.equal(new JobStore(s.recovery.store.file).get(rec.jobId).status,'waiting');
-});
-test('transient comment-file write failure reconnects the writer without ending the session',async()=>{
- const wc=new EventEmitter();wc.isDestroyed=()=>false;wc.debugger={isAttached:()=>true,sendCommand:async()=>({result:{value:'alive'}})};
- const win=new EventEmitter();win.webContents=wc;win.isDestroyed=()=>false;win.destroy=()=>win.emit('closed');
- const dm=new DanmakuCapture({openRoomWindow:async()=>win});dm.basePath=path.join(root,'comment-write-retry');dm.rid='123456';dm.win=win;dm.retryMs=100000;
- const bad=new PassThrough();bad.resume();const create=fs.createWriteStream;fs.createWriteStream=()=>bad;
- try{dm._ensureFile();bad.emit('error',Error('ENOSPC test'));}finally{fs.createWriteStream=create;}
- assert.equal(dm.stopped,false);assert.equal(dm.state,'retrying');assert.ok(dm.timer);await dm._check();assert.equal(dm.state,'listening');assert.equal(dm.gaps.length,1);assert.ok(dm.gaps[0].end);assert.ok(fs.existsSync(dm.basePath+'.danmaku-status.json'));await dm.stop();
 });
 test('missing main configuration restores the valid backup rather than clearing watches',()=>{
  const dir=fs.mkdtempSync(path.join(root,'cfg-'));fs.writeFileSync(path.join(dir,'config.json.bak'),JSON.stringify({watchlist:[{rid:'123456'}],settings:{segment:'0'}}));const module={exports:{}};

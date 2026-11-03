@@ -59,7 +59,7 @@
       <thead>
         <tr>
           <th>主播</th><th>房间号</th><th>状态</th><th>直播标题</th>
-          <th>已录</th><th>文件</th><th>弹幕</th><th>操作</th>
+          <th>已录</th><th>文件</th><th>操作</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -132,7 +132,7 @@
     <label class="check"><input id="setPostQuiet" type="checkbox" /> 启用后处理静音时段</label>
     <label>每天静音开始 <input id="setPostQuietStart" type="time" step="60" /></label>
     <label>每天静音结束 <input id="setPostQuietEnd" type="time" step="60" /></label>
-    <p class="hint">按电脑本地时间，可跨午夜。时段内不启动新的修复、合并或拆分任务；已开始的任务完整跑完。录制和弹幕采集继续，结束后自动处理排队任务。</p>
+    <p class="hint">按电脑本地时间，可跨午夜。时段内不启动新的修复、合并或拆分任务；已开始的任务完整跑完。录制继续，结束后自动处理排队任务。</p>
     <label class="check"><input id="setNoSleep" type="checkbox" /> 录制期间阻止系统休眠</label>
     <label class="check"><input id="setAutoStart" type="checkbox" /> 开机自动启动</label>
     <label>Webhook 通知 <input id="setWebhook" type="text" placeholder="https://公网地址/钩子 (开播/录完时POST)" /></label>

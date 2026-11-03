@@ -169,14 +169,6 @@ function render() {
       tdSize.appendChild(pd);
     }
 
-    const tdDm = document.createElement('td');
-    tdDm.textContent = t.state === 'recording' ? t.dmCount : '-';
-    if (t.state === 'recording') {
-      const labels = { starting: '初始化中', retrying: '重试中', failed: '采集失败' };
-      if (labels[t.dmState]) tdDm.textContent = `${labels[t.dmState]} · ${t.dmCount || 0}`;
-      tdDm.title = t.dmError || (t.dmState === 'listening' ? '弹幕监听正常' : '');
-    }
-
     const tdOps = document.createElement('td');
     tdOps.className = 'ops';
     if (!t.secWatch && t.live) {
@@ -242,7 +234,7 @@ function render() {
     bc.onclick = safe(() => configRoom(t), 'config');
     tdOps.appendChild(bc);
 
-    tr.append(tdName, tdRid, tdState, tdTitle, tdDur, tdSize, tdDm, tdOps);
+    tr.append(tdName, tdRid, tdState, tdTitle, tdDur, tdSize, tdOps);
     tb.appendChild(tr);
   }
   groupCompanyRows(tb);

@@ -1,7 +1,7 @@
 window.auditCalls=[];
 window.auditMode='ok';
 window.auditListeners=[];
-window.auditState={tasks:[{rid:'123456',dispName:'测试主播',state:'recording',live:true,paused:false,startedAt:Date.now(),bytes:1,dmCount:2}],history:[],post:{items:[{id:'11111111-1111-1111-1111-111111111111',name:'测试任务',status:'failed',partsTotal:1}]},settings:{},diskFreeGB:100};
+window.auditState={tasks:[{rid:'123456',dispName:'测试主播',state:'recording',live:true,paused:false,startedAt:Date.now(),bytes:1}],history:[],post:{items:[{id:'11111111-1111-1111-1111-111111111111',name:'测试任务',status:'failed',partsTotal:1}]},settings:{},diskFreeGB:100};
 window.auditEmit=()=>window.auditListeners.forEach(cb=>cb(window.auditState));
 window.confirm=()=>true;
 window.alert=text=>{window.auditAlert=text;};

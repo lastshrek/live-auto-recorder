@@ -2,7 +2,7 @@
   "name": "live-recorder",
   "productName": "直播自动录制",
   "version": "0.1.0",
-  "description": "多主播开播监控 + 自动原画录制 + 弹幕双版本",
+  "description": "多主播开播监控 + 自动原画录制",
   "main": "src/bootstrap.cjs",
   "scripts": {
     "start": "electron .",

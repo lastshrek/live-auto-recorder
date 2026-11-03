@@ -8,7 +8,6 @@ const { safeName, ts, sleep } = require('../util/const');
 const { ROOT } = require('./store');
 const { DouyinSession } = require('./session');
 const { Recorder } = require('./recorder');
-const { DanmakuCapture } = require('./danmaku');
 const { PostProcessor } = require('./postprocess');
 const { pickFlv } = require('./adapter/douyin');
 const {roomDirectory,recordingDirs,locateHistoryFile}=require('./recording-paths');
@@ -196,7 +195,7 @@ class Scheduler {
         continue;
       }
       const item = { rid, secUid, companyId: w.companyId || '', name: w.name || '', nickname: w.nickname || '', titleFilter: String(w.titleFilter || ''), hours: String(w.hours || ''), maxSec: +w.maxSec || 0 };
-      const task = { rid, secUid, key, item, monitorPaused:!!w.monitorPaused, monitorVersion:0, state: 'idle', offCount: 0, paused: false, rec: null, dm: null, lastInfo: null, lastPollAt: 0, pollFails: 0, firstLiveAt: 0, stop: false };
+      const task = { rid, secUid, key, item, monitorPaused:!!w.monitorPaused, monitorVersion:0, state: 'idle', offCount: 0, paused: false, rec: null, lastInfo: null, lastPollAt: 0, pollFails: 0, firstLiveAt: 0, stop: false };
       this.tasks.set(key, task);
       const delay = this.tasks.size * 400; // 错峰
       this.timers.set(key, setTimeout(() => this._loop(task), delay));
@@ -506,7 +505,7 @@ class Scheduler {
     const name = safeName(info.nickname || task.item.nickname || task.item.name || task.rid);
     const dir=roomDirectory(this.outDir,task.rid,name);
     const prefix=`${name}_${task.rid}_${ts()}`;let base=path.join(dir,prefix),serial=0;
-    while(fs.readdirSync(dir).some(f=>f.startsWith(path.basename(base)+'_part')||f===path.basename(base)+'.danmaku.jsonl')||[...(this.recovery?.store.jobs.values()||[])].some(j=>j.base===base))base=path.join(dir,prefix+'_'+(++serial));
+    while(fs.readdirSync(dir).some(f=>f.startsWith(path.basename(base)+'_part'))||[...(this.recovery?.store.jobs.values()||[])].some(j=>j.base===base))base=path.join(dir,prefix+'_'+(++serial));
     task.state = 'recording';
     task.offCount = 0;
     task.paused = false; // 清上一场遗留的暂停态(否则界面显示已暂停/续录与分段被抑制)
@@ -539,13 +538,6 @@ class Scheduler {
       task.lastError = e.message;
       throw e;
     }
-
-    task.dm = new DanmakuCapture(this.sess);
-    task.dm.onGap=gap=>{
-      const note=`弹幕写入故障期间约${Math.ceil((gap.end-gap.start)/1000)}秒未能保证采集，已保留故障记录`;
-      if(!rec.notices.includes(note))rec.notices.push(note);rec.checkpoint();
-    };
-    task.dm.start(task.rid, base).catch((e) => log.warn(`[dm] 启动失败(录制不受影响): ${e.message}`));
 
     // 测试/限额: item.maxSec 秒后自动停
     if (task.item.maxSec) {
@@ -587,7 +579,6 @@ class Scheduler {
     let files = [];
     try {
       try { await rec.stop(); } catch (e) { log.error('[rec] stop异常', e.message); }
-      try { await task.dm.stop(); } catch (e) { log.error('[dm] stop异常', e.message); }
       if(this.recovery){const result=await this.recovery.processStopped(task,rec,view);enqueued=!!result.enqueued;return result;}
       // 相邻分片自动合并(对齐 biliLive-tools autoPartMerge): 断流重连的分片无缝并回一个文件
       if (settings.autoPartMerge) {
@@ -640,7 +631,6 @@ class Scheduler {
       task.state = 'idle';
       task.stopping = false;
       task.rec = null;
-      task.dm = null;
     }
   }
 
@@ -670,9 +660,6 @@ class Scheduler {
         error: t.lastError || '',
         notice:t.lastNotice||'',
         startedAt: t.recorderStartedAt || 0,
-        dmCount: t.dm ? t.dm.count : 0,
-        dmState: t.dm ? t.dm.state : '',
-        dmError: t.dm ? t.dm.error : '',
         bytes: t.rec ? t.rec.totalBytes() : 0,
         parts: t.rec ? t.rec.part : 0,
         pollFails: t.pollFails || 0,

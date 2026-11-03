@@ -1,4 +1,4 @@
-// 后处理队列: 录制结束后统一收尾(超大录像拆分), 不再生成弹幕烧录版。
+// 后处理队列: 录制结束后统一收尾(超大录像拆分)
 // 本模块只做队列编排与文件读写, 所有 ffmpeg 执行都经由 Recorder 内部的白名单封装
 const fs = require('node:fs');
 const log = require('../util/log');

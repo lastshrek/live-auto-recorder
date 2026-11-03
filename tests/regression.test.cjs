@@ -11,7 +11,6 @@ const http = require('node:http');
 const { Recorder, createFfmpegRunner } = require('../src/core/recorder');
 const { Scheduler } = require('../src/core/scheduler');
 const { PostProcessor } = require('../src/core/postprocess');
-const { DanmakuCapture, isHumanComment } = require('../src/core/danmaku');
 const { pickBestFlv } = require('../src/core/adapter/douyin');
 const { parsePacketHashes, overlapCut } = require('../src/core/media');
 const { evaluateNow } = require('../src/core/page-eval');
@@ -123,11 +122,6 @@ test('original quality is preferred, unknown tiers cannot displace it', () => {
   assert.equal(pickBestFlv({ _origin: 'https://x/original_or.flv', FULL_HD1: 'https://x/hd.flv' }), 'https://x/original_or.flv');
   assert.equal(pickBestFlv({ mystery: 'https://x/unknown_or.flv', FULL_HD1: 'https://x/hd.flv' }), 'https://x/hd.flv');
 });
-test('system likes and gifts are filtered while actual comments remain', () => {
-  for (const s of ['甲：为主播点赞了', '甲:送出了玫瑰×1', '甲：来了', '系统：提醒']) assert.equal(isHumanComment(s), false, s);
-  for (const s of ['甲：你好', '乙：主播今天几点下播？', '甲：这个地方很好看', '甲：送给你一首歌', '甲：来了好久才看到']) assert.equal(isHumanComment(s), true, s);
-});
-
 test('ambiguous repeated fingerprints do not discard static or looping content', () => {
   const packets = Array.from({ length: 20 }, (_, i) => ({ dts: i / 15, hash: 'repeated' }));
   assert.equal(overlapCut({ packets, start: 0 }, { packets, start: 0 }), null);
@@ -140,21 +134,21 @@ test('empty stream URL cannot leave a recording task behind', async () => {
 test('I/O failure releases stopping state and reports failure', async () => {
   const s = scheduler(), t = task(); t.state = 'recording';
   t.rec = { stop: async () => {}, totalBytes: () => 0, remuxAll: async () => { throw Error('test I/O failure'); } };
-  t.dm = { stop: async () => {} };
+  
   const result = await s._stopJob(t, 'test');
   assert.equal(result.ok, false); assert.equal(t.state, 'idle'); assert.equal(t.stopping, false); assert.equal(t.rec, null);
 });
 test('shutdown waits for an already running stop operation', async () => {
   const s = scheduler(), t = task(); t.state = 'recording'; s.tasks.set(t.key, t);
   let release; const blocked = new Promise((r) => { release = r; });
-  t.rec = { stop: async () => {}, totalBytes: () => 0, remuxAll: async () => { await blocked; return []; } }; t.dm = { stop: async () => {} };
+  t.rec = { stop: async () => {}, totalBytes: () => 0, remuxAll: async () => { await blocked; return []; } }; 
   const stopped = s._stopJob(t, 'test'); let finished = false;
   const shutdown = s.shutdown().then(() => { finished = true; });
   await sleep(10); assert.equal(finished, false); release(); await Promise.all([stopped, shutdown]); assert.equal(finished, true);
 });
 test('manual stop blocks this live session until confirmed offline', async () => {
   const s = scheduler(), t = task(); t.state = 'recording'; s.tasks.set(t.key, t);
-  t.rec = { stop: async () => {}, totalBytes: () => 0, remuxAll: async () => [] }; t.dm = { stop: async () => {} };
+  t.rec = { stop: async () => {}, totalBytes: () => 0, remuxAll: async () => [] }; 
   let live = true, starts = 0; s.sess.getRoomInfo = async () => ({ live, nickname: 'test' }); s._startJob = async () => { starts++; };
   await s._stopJob(t, '界面手动停止'); await s._poll(t); assert.equal(starts, 0);
   live = false; await s._poll(t); await s._poll(t); live = true; await s._poll(t); assert.equal(starts, 1);
@@ -163,7 +157,7 @@ test('shutdown also waits for a removed task that is still sealing files', async
   const s = scheduler(), t = task(); t.state = 'recording';
   let release; const pending = new Promise((r) => { release = r; });
   t.rec = { stop: async () => {}, totalBytes: () => 0, remuxAll: async () => { await pending; return []; } };
-  t.dm = { stop: async () => {} };
+  
   const stopped = s._stopJob(t, '从关注列表移除'); let finished = false;
   const shutdown = s.shutdown().then(() => { finished = true; });
   await sleep(10); assert.equal(finished, false); release(); await Promise.all([stopped, shutdown]);
@@ -230,13 +224,6 @@ test('profile promotion into an existing recording keeps one task without interr
   assert.equal(s.tasks.size,1);assert.equal(s.tasks.get('123456'),recording);assert.equal(recording.state,'recording');
   assert.equal(s.cfg.watchlist.length,1);assert.equal(s.cfg.watchlist[0].name,'原备注');assert.equal(s.cfg.watchlist[0].secUid,secUid);assert.equal(s.cfg.watchlist[0].companyId,'company-a');
 });
-test('late danmaku window is destroyed and cannot create a stream', async () => {
-  let release, destroyed = false; const pending = new Promise((r) => { release = r; });
-  const dm = new DanmakuCapture({ openRoomWindow: () => pending }); const file = path.join(root, 'late');
-  const started = dm.start('123456', file); await dm.stop(); release({ destroy() { destroyed = true; } }); await started;
-  assert.equal(destroyed, true); assert.equal(fs.existsSync(file + '.danmaku.jsonl'), false);
-});
-
 test('page evaluation times out instead of waiting forever for a loading page', async () => {
   const wc={isDestroyed:()=>false,debugger:{isAttached:()=>true,sendCommand:()=>new Promise(()=>{})}};
   await assert.rejects(evaluateNow(wc,'1',10),/超时/);
@@ -246,41 +233,6 @@ test('page evaluation times out instead of waiting forever for a loading page', 
   assert.equal(attached,false);
 });
 
-test('danmaku installation recovers after a timed out command and stop cancels recovery', async () => {
-  let hangs=true;
-  const wc={isDestroyed:()=>false,debugger:{isAttached:()=>true,sendCommand:()=>hangs?new Promise(()=>{}):Promise.resolve({result:{value:'ok:chatroom'}})}};
-  const dm=new DanmakuCapture({});dm.rid='123456';dm.win={webContents:wc,destroy(){}};dm.scriptTimeoutMs=10;
-  await dm._check();assert.equal(dm.state,'retrying');assert.match(dm.error,/超时/);
-  hangs=false;await dm._check();assert.equal(dm.state,'listening');
-  await dm.stop();assert.equal(dm.stopped,true);assert.equal(dm.timer._destroyed,true);
-});
-
-test('a failed room open is visible and stop cancels its retry', async () => {
-  const dm=new DanmakuCapture({openRoomWindow:async()=>{throw Error('测试加载失败');}});
-  await dm.start('123456',path.join(root,'failed-open'));
-  assert.equal(dm.state,'retrying');assert.match(dm.error,/测试加载失败/);
-  await dm.stop();assert.equal(dm.timer._destroyed,true);
-});
-
-test('recovery cannot open multiple capture windows concurrently', async () => {
-  let calls=0,release,destroyed=false;
-  const dm=new DanmakuCapture({openRoomWindow:()=>{calls++;return new Promise(r=>{release=r;});}});
-  const a=dm.start('123456',path.join(root,'one-recovery-window')),b=dm._open();
-  await dm.stop();release({destroy(){destroyed=true;}});await Promise.all([a,b]);
-  assert.equal(calls,1);assert.equal(destroyed,true);
-});
-
-test('a connected but silent collector reconnects with backoff instead of staying healthy forever', async () => {
-  let reloads=0;
-  const wc={isDestroyed:()=>false,debugger:{isAttached:()=>true,sendCommand:async(_method,args)=>{
-    if(args.expression==='location.reload()'){reloads++;return {result:{}};}
-    return {result:{value:'alive'}};
-  }}};
-  const dm=new DanmakuCapture({});dm.rid='123456';dm.openedAt=Date.now()-61000;dm.win={webContents:wc,destroy(){}};
-  await dm._check();assert.equal(reloads,1);assert.equal(dm.state,'retrying');
-  await dm._check();assert.equal(reloads,1);assert.equal(dm.silentRecoveries,1);
-  await dm.stop();
-});
 test('setConfig applies directory and postprocessing settings together', () => {
   const s = scheduler(); s._applyWatchlist = () => {};
   const cfg = { watchlist: [], settings: { outputDir: path.join(root, 'new-output'), keepRaw: false } };
@@ -306,7 +258,7 @@ test('legacy recording history resolves the classified file path', () => {
 test('retention includes room folders and protects active, pending and backup files', () => {
   const s=scheduler();s.outDir=path.join(root,'retention');fs.mkdirSync(s.outDir);s.cfg.settings.keepDays=1;
   const room=roomDirectory(s.outDir,'123456','主播'),backup=path.join(room,'损坏原片备份');fs.mkdirSync(backup);
-  const old=path.join(room,'old.mp4'),active=path.join(room,'active.danmaku.jsonl'),pending=path.join(room,'encode.pending.mp4'),raw=path.join(room,'raw.flv'),saved=path.join(backup,'saved.mp4');
+  const old=path.join(room,'old.mp4'),active=path.join(room,'active.mp4'),pending=path.join(room,'encode.pending.mp4'),raw=path.join(room,'raw.flv'),saved=path.join(backup,'saved.mp4');
   for(const file of [old,active,pending,raw,saved]){fs.writeFileSync(file,'fixture');fs.utimesSync(file,new Date(0),new Date(0));}
   s.tasks.set('123456',{rec:{base:path.join(room,'active')}});s._cleanupOld();
   assert.equal(fs.existsSync(old),false);
@@ -317,23 +269,21 @@ test('classified recording seals the recording in its room directory', async () 
   const s=scheduler(),t=task();s.outDir=path.join(root,'classified-session');fs.mkdirSync(s.outDir);
   s.post=new PostProcessor({keepRaw:true,minSizeMB:0});
   s.cfg.settings={...s.cfg.settings,keepRaw:true,minSizeMB:0};
-  const start=Recorder.prototype.start,dmStart=DanmakuCapture.prototype.start;
+  const start=Recorder.prototype.start;
   Recorder.prototype.start=function(){this.startedAt=Date.now();this.part=1;this.partStarts=[0,this.startedAt];};
-  DanmakuCapture.prototype.start=async()=>{};
   let history;s._appendHistory=entry=>{history=entry;};
   try{
     await s._startJob(t,{nickname:'分类测试主播',best:'https://example.test/live.flv',flv:{},title:'测试'});
     const rec=t.rec;await clip(rec,1,0,2);
-    fs.writeFileSync(rec.base+'.danmaku.jsonl',JSON.stringify({t:rec.startedAt+100,text:'测试用户：只显示评论内容'})+'\n');
     const stopped=await s._stopJob(t,'测试封存');assert.equal(stopped.ok,true);
     while(s.post.busy)await sleep(10);
     assert.equal(path.basename(path.dirname(rec.base)),'分类测试主播_123456');
-    for(const file of [rec.mp4Path(1),rec.base+'.danmaku.jsonl'])assert.equal(fs.existsSync(file),true,file);
+    for(const file of [rec.mp4Path(1)])assert.equal(fs.existsSync(file),true,file);
     assert.ok(history.files[0].startsWith('分类测试主播_123456/'));
-  }finally{Recorder.prototype.start=start;DanmakuCapture.prototype.start=dmStart;}
+  }finally{Recorder.prototype.start=start;}
 });
 
-test('sealing and subtitle work share one status item without an idle gap', async () => {
+test('sealing and post-processing work share one status item without an idle gap', async () => {
   const pp = new PostProcessor({});
   const rec = {part:1, issues:[]};
   const view = pp.begin(rec, '状态测试');
@@ -363,7 +313,7 @@ test('successful recovery is a notice rather than a failed recording', async () 
   let status;
   s.post.begin=()=>({});s.post.finish=(_view,value)=>{status=value;};
   t.rec={stop:async()=>{},totalBytes:()=>0,issues:[],notices:['已修复，原片已备份'],remuxAll:async()=>[]};
-  t.dm={stop:async()=>{}};
+  
   const result=await s._stopJob(t,'测试恢复');
   assert.equal(result.ok,true);assert.equal(t.lastError,'');assert.equal(t.lastNotice,'已修复，原片已备份');assert.equal(status,'recovered');
 });
@@ -374,7 +324,7 @@ test('a removed task stays visible while its source is being sealed', async () =
   let release;
   t.rec={part:1, stop:async()=>{},totalBytes:()=>0,remuxAll:async()=>{
     t.rec.onStage('完整性检查'); await new Promise(r=>{release=r;});return [];
-  }}; t.dm={stop:async()=>{}};
+  }}; 
   const stopped=s._stopJob(t,'从关注列表移除'); s.tasks.delete(t.key);
   while (!release) await sleep(1);
   assert.equal(s.post.status.busy,true); assert.equal(s.post.status.items[0].stage,'完整性检查');
@@ -477,17 +427,16 @@ test('failed merge preserves source files and the original segment timeline', as
   await clip(rec, 1, 0, 2); fs.writeFileSync(rec.flvPath(2), Buffer.alloc(2048));
   assert.equal(await rec.mergeParts(), false);
   assert.equal(rec.part, 2); assert.deepEqual(rec.partStarts, [0, 1000, 4000]);
-  assert.equal(rec.mergedDurations, undefined);
   assert.equal(fs.existsSync(rec.flvPath(1)), true); assert.equal(fs.existsSync(rec.flvPath(2)), true);
 });
-test('empty reconnect attempts do not block merging or shift subtitle segment starts', async () => {
+test('empty reconnect attempts do not block merging', async () => {
   const rec = new Recorder(path.join(root, 'empty-reconnect')); rec.part = 4;
   rec.startedAt = 1000; rec.partStarts = [0, 1000, 4000, 5000, 9000];
   await clip(rec, 1, 0, 3); await clip(rec, 3, 3, 3);
   fs.writeFileSync(rec.flvPath(2), '');
   rec._onExit(1, 2); rec._onExit(1, 4);
   assert.equal(await rec.mergeParts(), true); assert.equal(rec.part, 1);
-  assert.deepEqual(rec.mergedSegStarts, [1000, 5000]);
+  assert.equal(rec.partStarts[1], 1000);
   assert.equal((await rec.validateMedia(rec.flvPath(1))).ok, true);
   assert.equal(fs.existsSync(rec.flvPath(3)), false);
 });
@@ -517,7 +466,7 @@ test('overlapping encoded segments merge without duplicated packets', async () =
   assert.equal(await rec.mergeParts(), true); assert.equal(rec.part, 1);
   const scan = await rec._scanVideo(rec.flvPath(1));
   assert.ok(scan.duration > 11.5 && scan.duration < 12.6, 'unexpected merged duration ' + scan.duration);
-  assert.ok(rec.mergedReplayOffsets[1] > 1.5); assert.equal((await rec.validateMedia(rec.flvPath(1))).ok, true);
+  assert.equal((await rec.validateMedia(rec.flvPath(1))).ok, true);
 });
 test('overlap trimming preserves a stream containing B frames', async () => {
   const bSource = path.join(root, 'b-frames.mp4');

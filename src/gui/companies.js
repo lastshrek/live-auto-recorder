@@ -9,7 +9,7 @@ async function changeCompany(action,data) {
 function companyGroups(){return [...(state?.companies||[]),{id:'none',name:'未分组',collapsed:!!state?.ungroupedCollapsed}];}
 function taskCompany(t){return (state.companies||[]).some(c=>c.id===t.companyId)?t.companyId:'none';}
 function taskIdentity(t){return String(t.identity||t.rid);}
-function taskNeedsAttention(t){return !!(t.error||t.pollFails>5||['retrying','failed'].includes(t.dmState));}
+function taskNeedsAttention(t){return !!(t.error||t.pollFails>5);}
 function companyMatches(t,company) {
   const query=$('companySearch').value.trim().toLocaleLowerCase(),status=$('companyStatus').value;
   const matches=!query||[t.dispName,t.name,t.rid,t.title,company.name].some(v=>String(v||'').toLocaleLowerCase().includes(query));
