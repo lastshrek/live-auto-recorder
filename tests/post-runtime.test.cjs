@@ -61,12 +61,17 @@ test('files with an active capture writer never enter remuxing',async()=>{
   await assert.rejects(rec.mergeParts(),e=>e.code==='LR_SOURCE_BUSY');assert.equal(ran,false);
 });
 test('orphan cleanup stops only a recorded media child with matching owner and input',async()=>{
- const vm=require('node:vm'),module={exports:{}},file=path.resolve(__dirname,'../src/core/orphan-process.js');
- const base=path.join(root,'owner'),exe=path.join(root,'ffmpeg.exe'),killed=[];
- const rows=[{ProcessId:321,ParentProcessId:777,ExecutablePath:exe,CommandLine:'"'+exe+'" -i "'+base+'_part1.mp4" -f null -'},
- {ProcessId:654,ParentProcessId:777,ExecutablePath:exe,CommandLine:'"'+exe+'" -i "'+base+'_part1.mp4" -f null -'}];
- vm.runInNewContext(fs.readFileSync(file,'utf8'),{module,exports:module.exports,setTimeout,process:{platform:'win32',pid:999,kill:(pid,signal)=>{if(signal)killed.push(pid);else {const e=Error();e.code='ESRCH';throw e;}}},require:id=>id==='node:child_process'?{execFile:(exe,args,opts,cb)=>cb(null,JSON.stringify(rows))}:id==='./recorder'?{ffmpegPath:exe}:require(id)});
- await module.exports.stopOrphanWriter({base,ownerPid:777,recorder:{processingProcessId:321}});assert.deepEqual(killed,[321]);
+ const {stopOrphanWriter}=require('../src/core/orphan-process');
+ const {ffmpegPath}=require('../src/core/recorder');
+ const base=path.join(root,'owner'),killed=[];
+ const rows=[{pid:321,ppid:777,exe:ffmpegPath,command:'"'+ffmpegPath+'" -i "'+base+'_part1.mp4" -f null -'},
+ {pid:654,ppid:777,exe:ffmpegPath,command:'"'+ffmpegPath+'" -i "'+base+'_part1.mp4" -f null -'}];
+ const realKill=process.kill;
+ process.kill=(pid,signal)=>{if(signal==='SIGKILL'){killed.push(pid);return true;}const e=Error();e.code='ESRCH';throw e;};
+ try{
+   await stopOrphanWriter({base,ownerPid:777,recorder:{processingProcessId:321}},{platform:'darwin',query:async()=>rows});
+ } finally { process.kill=realKill; }
+ assert.deepEqual(killed,[321],'只结束与 job 记录匹配的那一个进程');
 });
 test('paused jobs survive restart without starting FFmpeg or losing their queue entry',async()=>{
  const {RecoveryController}=require('../src/core/recovery');const directory=fs.mkdtempSync(path.join(root,'restart-'));

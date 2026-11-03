@@ -105,7 +105,9 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   function createTray() {
-    const img = nativeImage.createFromBuffer(makeTrayIconPng());
+    const img = nativeImage.createFromBuffer(makeTrayIconPng(process.platform));
+    // macOS 菜单栏图标按点显示, 32px 图需标记为 2x 才不会被当成 32pt 放大
+    if (process.platform === 'darwin') img.setTemplateImage(false);
     tray = new Tray(img);
     tray.setToolTip('直播自动录制 (后台运行中)');
     tray.setContextMenu(
@@ -533,6 +535,9 @@ if (!app.requestSingleInstanceLock()) {
     showWindow();
   });
   app.on('window-all-closed', () => { /* 托盘常驻 */ });
+  // macOS: 窗口关掉后点 Dock 图标必须能唤回主界面, 否则应用"点不动"。
+  // 其他平台无 activate 事件, 该监听不会触发。
+  app.on('activate', () => { showWindow(); });
 
   // 拦截主框架、子框架和重定向的外部协议。
   app.on('web-contents-created', (_e, wc) => installNavigationGuards(wc));

@@ -29,3 +29,5 @@ recording-jobs.json.*
 # 本地自动化结果
 tests/electron/*-results.json
 tests/electron/*-error.txt
+# 打包产物
+dist/

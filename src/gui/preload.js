@@ -1,5 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// 界面文案需要随平台变化(macOS 称菜单栏而非托盘), 只暴露只读的平台标识
+contextBridge.exposeInMainWorld('platformInfo', {
+  platform: process.platform,
+  isMac: process.platform === 'darwin',
+  isWindows: process.platform === 'win32',
+  // 修饰键名称: macOS 用 ⌘, 其他用 Ctrl
+  modKey: process.platform === 'darwin' ? '⌘' : 'Ctrl',
+});
+
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('state:get'),
   companyAction: (action,data) => ipcRenderer.invoke('company:action',action,data),

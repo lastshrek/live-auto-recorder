@@ -24,11 +24,19 @@ function chunk(type, data) {
   return Buffer.concat([len, td, crc]);
 }
 
-function makeTrayIconPng() {
-  const W = 16, H = 16;
+// 运行时生成托盘图标 PNG, 免随包带图标文件。
+// macOS 菜单栏按点(pt)布局、屏是 2x, 16px 图会发虚; 因此按平台给出
+// 不同像素密度: macOS 32px(显示为 16pt), 其他平台 16px。
+function makeTrayIconPng(platform = process.platform) {
+  const scale = platform === 'darwin' ? 2 : 1;
+  return renderIcon(16 * scale, 5.2 * scale, 6.8 * scale);
+}
+
+function renderIcon(W, r, ring) {
+  const H = W;
   // 红色「录制中」圆点(经典REC样式), 加白色描边在深浅任务栏上都清晰
   const raw = Buffer.alloc(H * (1 + W * 4));
-  const cx = 7.5, cy = 7.5, r = 5.2, ring = 6.8;
+  const c = W / 2 - 0.5, cx = c, cy = c;
   for (let y = 0; y < H; y++) {
     raw[y * (1 + W * 4)] = 0; // filter: none
     for (let x = 0; x < W; x++) {

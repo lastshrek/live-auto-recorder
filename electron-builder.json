@@ -1,0 +1,59 @@
+{
+  "appId": "com.live-recorder.app",
+  "productName": "直播自动录制",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "src/**/*",
+    "package.json",
+    "!logs/**",
+    "!recordings/**",
+    "!work/**",
+    "!dist/**",
+    "!.workbuddy-ai/**"
+  ],
+  "extraResources": [
+    {
+      "from": "启动直播录制.command",
+      "to": "启动直播录制.command"
+    }
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/ffmpeg-static/**"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}-${version}-win-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "deleteAppDataOnUninstall": false
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "category": "public.app-category.video",
+    "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+    "extendInfo": {
+      "LSUIElement": false,
+      "NSHighResolutionCapable": true
+    }
+  },
+  "dmg": {
+    "title": "${productName} ${version}"
+  }
+}

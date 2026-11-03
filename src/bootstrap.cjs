@@ -11,6 +11,9 @@ function launchLogged(root,executable,argv=[],launch=spawn){
   child.once('error',()=>{try{fs.closeSync(fd);}catch{}});child.unref();return {child,logFile};
 }
 function launchScheduled(root,launch=spawn){
+  // 计划任务(独立启动)是 Windows 专属能力; 其他平台回落到普通启动,
+  // 避免在 macOS/Linux 上因缺少 schtasks 而启动失败。
+  if(process.platform!=='win32')return launchLogged(root,process.execPath,[]);
   const marker=JSON.parse(fs.readFileSync(path.join(root,'logs','lifecycle','independent-start.json'),'utf8'));
   if(marker.taskName!=='LiveRecorder-Independent-Start'||path.resolve(marker.root)!==path.resolve(root))throw Error('独立启动配置无效');
   const child=launch('schtasks.exe',['/Run','/TN',marker.taskName],{cwd:root,windowsHide:true,stdio:'ignore'});

@@ -2,11 +2,41 @@
 
 自动监控关注主播，后台拉流**原画直拷**录制。下播后统一转封装、完整性校验，超大录像自动拆分为上传分段。支持多主播并发；完整性检查耗时取决于录像长度、分辨率、帧率及硬件。
 
+## 平台支持
+
+Windows / macOS 双平台。核心录制链路（ffmpeg 拉流、转封装、合并、超大文件拆分）在两端一致；
+仅下列系统级能力有差异，应用会自动降级，不会因此无法运行。
+
+| 能力 | Windows | macOS |
+|---|---|---|
+| 录制、转封装、合并、上传拆分、完整性校验 | 支持 | 支持 |
+| 托盘常驻 / 关闭窗口继续录制 | 支持 | 支持（菜单栏图标） |
+| 开机自启 | `setLoginItemSettings` | 同左（登录项） |
+| 录制期间阻止休眠 | `powerSaveBlocker` | 同左 |
+| 进程暂停 / 继续（后处理单任务） | `ntsuspend` 原生模块 | `SIGSTOP` / `SIGCONT` |
+| 崩溃后自动拉起 | 计划任务 + PowerShell 守护脚本 | `app-watchdog.cjs`（纯 Node） |
+| 独立守护（父进程被杀仍重启） | 支持 | 不支持，由 watcher 兜底 |
+| 孤儿 ffmpeg 检测 | PowerShell `Get-CimInstance` | `ps -axo`（同样只结束本应用的 ffmpeg） |
+
 ## 快速开始
 
 ```bash
+npm install
 npm start
 ```
+
+也可以直接双击启动器：Windows 用 `启动直播录制.bat`，macOS 用 `启动直播录制.command`
+（首次双击若提示「无法验证开发者」，右键 → 打开 → 打开）。macOS 另见 `使用说明-macOS.md`。
+
+## 打包安装包
+
+```bash
+npm run dist:win    # 生成 Windows 安装包 (NSIS)
+npm run dist:mac    # 生成 macOS dmg (x64 + arm64)
+```
+
+配置见 `electron-builder.json`；产物在 `dist/`。跨平台打包需在对应系统上执行
+（macOS 包必须在 macOS 上打）。
 
 弹出主界面（仪表盘）：
 - **添加监控**：粘贴直播间链接或房间号（如 `https://live.douyin.com/123456789012`），可加备注名
@@ -14,7 +44,7 @@ npm start
 - **观看**：直播中可点「观看」弹出独立直播窗口（可全屏），关闭窗口**不影响**录制
 - **设置**：轮询间隔（默认 3 秒）、最大并发、磁盘水位、分段策略、后处理并发
 - 开播/录制完成有**系统通知**
-- **关闭窗口 = 最小化到托盘继续录制**；退出请用托盘图标 → 退出（会优雅封存正在录的文件）
+- **关闭窗口 = 最小化到托盘继续录制**；退出请用托盘图标（macOS 为菜单栏图标）→ 退出（会优雅封存正在录的文件）
 
 也可以直接编辑 `config.json`（10 秒内热重载，无需重启）：
 
@@ -79,7 +109,12 @@ core/
   postprocess.js    收尾队列：并发车道、暂停恢复、超大录像上传分段
   job-store.js      原子持久化任务与分片记录
   recovery.js       启动恢复、持久化失败状态、退避与手动重试
+  orphan-process.js 结束本应用旧进程遗留的 ffmpeg（跨平台判定，不按名字批量杀）
+  process-query.js  进程查询适配：Windows 走 PowerShell/CIM，macOS/Linux 走 ps
+  process-control.js 进程挂起/恢复与降优先级（ntsuspend 或 SIGSTOP/SIGCONT）
   flv-tail-async.js 尾部结构检查的工作线程入口，避免阻塞主进程
+util/
+  platform.js       平台能力表：各系统支持哪些系统级特性，供上层优雅降级
 gui/                仪表盘（原生JS，无框架依赖）
 ```
 

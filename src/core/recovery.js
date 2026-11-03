@@ -328,7 +328,7 @@ class RecoveryController{
     try{
       this.store.set(rec,{status:'recovering',waitReason:'',nextAttemptAt:0,...(manual?{attempts:0}:{})});
       if(job.phase==='publish')return this.publish(rec,job.publicationStatus||'done');
-      await stopOrphanWriter(job);
+      await stopOrphanWriter(job,{log});
       if(this.closing||this.store.get(id)?.status==='canceled')return {ok:true,canceled:true};
       if(job.phase==='post'&&!rec.issues.length){
         this.store.set(rec,{status:'queued',nextAttemptAt:0});this.s.post.enqueue({id,recorder:rec,nickname:job.nickname,settings:rec.settings,mergeComplete:true,view});return {ok:true};
@@ -382,7 +382,7 @@ class RecoveryController{
       if(!path.isAbsolute(job.base)||!/_\d{6,13}_\d{8}_\d{6}(?:_\d+)?$/.test(path.basename(job.base)))continue;
       const rec=restoreRecorder(job,Recorder),view=this.view(rec,job);
       if(job.status==='paused'||job.userPaused){
-        try{await stopOrphanWriter(job);}catch(e){
+        try{await stopOrphanWriter(job,{log});}catch(e){
           this.store.set(rec,{status:'waiting',waitReason:'user',error:e.message,nextAttemptAt:0});
           this.s.post.finish(view,'waiting',e.message);continue;
         }

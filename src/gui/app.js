@@ -657,6 +657,16 @@ $('roomConfigForm').onsubmit = safe(async (event) => {
 initCompanies();
 let lastStateAt=0,stateFetching=false;
 function acceptState(s){if(!s||s.ok===false)throw Error(s?.error||'状态尚未就绪');lastStateAt=Date.now();state=s;render();renderPost();renderHistory();}
+// 平台相关文案: macOS 的托盘位于菜单栏, 不叫"托盘"
+(function applyPlatformText(){
+  const p = window.platformInfo || {};
+  const footer = $('appFooter');
+  if (footer) {
+    footer.textContent = p.isMac
+      ? '关闭窗口 = 后台继续录制 · 退出请点菜单栏图标 → 退出'
+      : '关闭窗口 = 后台继续录制 · 退出请用托盘图标 → 退出';
+  }
+})();
 window.api.onState(safe(acceptState, 'onState'));
 window.api.getState().then(safe(acceptState,'getState')).catch(e=>uiFail('getState',e));
 setInterval(safe(async()=>{
