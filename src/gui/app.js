@@ -395,7 +395,10 @@ function renderHistory() {
     const td2 = document.createElement('td'); td2.textContent = h.nickname || h.rid || '';
     const td3 = document.createElement('td'); td3.className = 'title-cell'; td3.textContent = h.title || '-'; td3.title = h.title || '';
     const td4 = document.createElement('td'); td4.textContent = fmtDur((h.secs || 0) * 1000);
-    const td5 = document.createElement('td'); td5.className = 'sub'; td5.textContent = (h.files || []).length + ' 个';
+    const td5 = document.createElement('td'); td5.className = 'sub';
+    // 文件已被删除时不能还显示"2 个": 引用早已失效, 显示数量会误导
+    td5.textContent = h.missing ? '文件已删除' : (h.files || []).length + ' 个';
+    if (h.missing) td5.title = '录像文件已不在磁盘上（可能被手动删除或已过保留期）';
     if(h.status||h.error){const detail=document.createElement('div');detail.className='sub';detail.textContent=h.error||({processing:'处理中',queued:'排队',quiet:'静音时段，等待自动处理',waiting:'等待恢复',failed:'处理失败',warning:'需检查',done:'完成',recovered:'已修复',skipped:'原片完成',canceled:'已取消'}[h.status]||h.status);detail.title=h.error||h.recoveryNotice||'';td5.appendChild(detail);}
     tr.append(td1, td2, td3, td4, td5);
     hb.appendChild(tr);

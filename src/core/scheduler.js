@@ -11,6 +11,7 @@ const { Recorder } = require('./recorder');
 const { PostProcessor } = require('./postprocess');
 const { pickFlv } = require('./adapter/douyin');
 const {roomDirectory,recordingDirs,locateHistoryFile}=require('./recording-paths');
+const {reconcileHistory}=require('./history-reconcile');
 const {writeJson}=require('../util/atomic-json');
 const {RecoveryController}=require('./recovery');
 const {NetworkBackoff}=require('./network-backoff');
@@ -56,7 +57,10 @@ class Scheduler {
       try{const resolved=locateHistoryFile(this.outDir,file);if(resolved!==file)relocated=true;return resolved;}
       catch(e){log.warn('[history] 分类文件定位失败，保留原索引:',e.message);return file;}
     });
+    // 路径重定位之后再核对磁盘: 录像可能已被用户删除或按保留期清理,
+    // 失效引用会让界面显示"2 个"却一个都打不开。条目本身保留, 只收敛文件列表。
     if(relocated){try{writeJson(this.historyFile,this.history,{backup:true});}catch(e){log.warn('[history] 分类索引保存失败:',e.message);}}
+    this._syncHistoryWithDisk();
     this.recovery=new RecoveryController(this,path.join(ROOT,'recording-jobs.json'));
   }
 
@@ -100,8 +104,26 @@ class Scheduler {
         } catch {}
       }
       if (removed) log.info(`[cleanup] 按保留${days}天策略清理了 ${removed} 个文件`);
+      // 刚删掉的文件要立刻从历史里收敛, 否则界面会一直显示打不开的条目
+      if (removed) this._syncHistoryWithDisk();
     } catch (e) {
       log.warn('[cleanup] 清理失败:', e.message);
+    }
+  }
+
+  // 把历史记录收敛到磁盘真实状态; 有变化才写盘, 避免无谓地刷 mtime。
+  _syncHistoryWithDisk() {
+    try {
+      const r = reconcileHistory(this.outDir, this.history);
+      if (!r.changed) return false;
+      this.history = r.history;
+      writeJson(this.historyFile, this.history, { backup: true });
+      log.info(`[history] 已同步磁盘状态：移除 ${r.removedFiles} 个失效文件引用，${r.vanishedEntries} 场标记为文件已删除`);
+      this.onEvent && this.onEvent('history', null);
+      return true;
+    } catch (e) {
+      log.warn('[history] 磁盘状态同步失败，保留原记录:', e.message);
+      return false;
     }
   }
 
