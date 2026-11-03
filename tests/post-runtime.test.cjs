@@ -5,7 +5,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(check,timeout=15000){const end=Date.now()+timeout;while(!check()){if(Date.now()>end)throw Error('condition timed out');await sleep(20);}}
 function recoveryFixture(name){
  const {RecoveryController}=require('../src/core/recovery');const directory=fs.mkdtempSync(path.join(root,name));
- const post=new PostProcessor(path.join(directory,'dm.ass'),{}),s={cfg:{settings:{}},tasks:new Map(),post,outDir:directory,history:[],historyFile:path.join(directory,'history.json'),freeBytes:()=>1024**4};
+ const post=new PostProcessor({}),s={cfg:{settings:{}},tasks:new Map(),post,outDir:directory,history:[],historyFile:path.join(directory,'history.json'),freeBytes:()=>1024**4};
  s.recovery=new RecoveryController(s,path.join(directory,'jobs.json'));return {s,directory,close(){s.recovery.close();s.recovery.mediaPool.close();post.close();}};
 }
 test('real FFmpeg pause preserves its PID and output, frees the shared budget, and excludes paused time from timeout',async()=>{
@@ -23,7 +23,7 @@ test('real FFmpeg pause preserves its PID and output, frees the shared budget, a
  }finally{rec._abortFfmpeg();pool.close();}
 });
 test('pausing one job starts the next without cancelling the first and resume continues the same work',async()=>{
- const post=new PostProcessor(path.join(root,'queue.ass'),{postConcurrency:1});const started=[];let releaseA;
+ const post=new PostProcessor({postConcurrency:1});const started=[];let releaseA;
  const rec=()=>({part:1,issues:[],notices:[],pauseProcessing(){},async resumeProcessing(){}});
  const a={id:'a',recorder:rec()},b={id:'b',recorder:rec()};
  post._process=async job=>{started.push(job.id);if(job===a)await new Promise(r=>releaseA=r);return {};};
@@ -34,7 +34,7 @@ test('pausing one job starts the next without cancelling the first and resume co
  }finally{post.close();releaseA?.();}
 });
 test('pause failures leave a running job active and duplicate submissions never start it twice',async()=>{
- const post=new PostProcessor(path.join(root,'errors.ass'),{});let release,count=0;
+ const post=new PostProcessor({});let release,count=0;
  post._process=async()=>{count++;await new Promise(r=>release=r);return {};};
  const job={id:'only',recorder:{part:1,pauseProcessing(){throw Error('native denied');}}};
  try{post.enqueue(job);post.enqueue({...job});assert.equal(count,1);assert.equal(post.pauseTask(job.postId).ok,false);assert.equal(job.paused,undefined);assert.equal(post.busy,true);release();await until(()=>!post.running.size);}finally{post.close();}
@@ -70,8 +70,8 @@ test('orphan cleanup stops only a recorded media child with matching owner and i
 });
 test('paused jobs survive restart without starting FFmpeg or losing their queue entry',async()=>{
  const {RecoveryController}=require('../src/core/recovery');const directory=fs.mkdtempSync(path.join(root,'restart-'));
- const rec=new Recorder(path.join(directory,'主播_123456_20261027_120000'));rec.part=1;rec.partStarts=[0,Date.now()];rec.settings={burnDanmaku:true,keepRaw:true};
- const make=()=>{const post=new PostProcessor(path.join(directory,'dm.ass'),{});const s={cfg:{settings:{}},tasks:new Map(),post,outDir:directory,history:[],historyFile:path.join(directory,'history.json'),freeBytes:()=>1024**4};s.recovery=new RecoveryController(s,path.join(directory,'jobs.json'));return s;};
+ const rec=new Recorder(path.join(directory,'主播_123456_20261027_120000'));rec.part=1;rec.partStarts=[0,Date.now()];rec.settings={keepRaw:true};
+ const make=()=>{const post=new PostProcessor({});const s={cfg:{settings:{}},tasks:new Map(),post,outDir:directory,history:[],historyFile:path.join(directory,'history.json'),freeBytes:()=>1024**4};s.recovery=new RecoveryController(s,path.join(directory,'jobs.json'));return s;};
  const first=make();first.recovery.store.set(rec,{status:'paused',phase:'post',userPaused:true,nickname:'主播'});first.post.close();first.recovery.mediaPool.close();
  const restored=make();let ran=false;restored.post._process=async()=>{ran=true;return {};};
  try{await restored.recovery.start();assert.equal(restored.post.queue.length,1);assert.equal(restored.post.queue[0].paused,true);assert.equal(ran,false);assert.equal(restored.post.hasRunnable,false);
@@ -81,21 +81,6 @@ test('paused jobs survive restart without starting FFmpeg or losing their queue 
 test('a failed media spawn releases its budget and the next job proceeds',async()=>{
  const {MediaExecution}=require('../src/core/media-execution'),pool=new MediaPool(()=>1),rec=new Recorder(path.join(root,'spawn-fail'));rec.mediaPool=pool;
  try{const result=await new MediaExecution(rec,['-i','missing'],1000,false,0,path.join(root,'missing.exe')).run();assert.equal(result.code,-1);assert.equal(pool.active.size,0);const lease=await pool.acquire();lease.release();}finally{pool.close();}
-});
-test('different jobs always have different subtitle paths even after another lane finishes',async()=>{
- const paths=[];const post=new PostProcessor(path.join(root,'dm.ass'),{});
- function job(id){const rec=new Recorder(path.join(root,id));rec.part=1;rec.partStarts=[0,0];rec.startedAt=0;fs.writeFileSync(rec.mp4Path(1),'fixture');const dm=rec.base+'.jsonl';fs.writeFileSync(dm,JSON.stringify({t:1000,text:id}));
-  rec._probeDuration=async()=>2;rec.burnPartDanmaku=async(part,ass)=>{paths.push(ass);fs.writeFileSync(rec.burnOutPath(1),'fixture');return {ok:true};};
-  return {id,recorder:rec,settings:{burnDanmaku:true,keepRaw:true},danmakuFile:dm,mergeComplete:true};}
- try{await post._process(job('first'));await post._process(job('second'));assert.equal(new Set(paths).size,2);}finally{post.close();}
-});
-test('caption encoding preserves variable frame intervals without inventing duplicate frames',async()=>{
- const {createFfmpegRunner}=require('../src/core/recorder'),{genAss}=require('../src/core/postprocess');
- const rec=new Recorder(path.join(root,'vfr'));rec.part=1;
- const ff=createFfmpegRunner(),made=await ff(['-y','-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=20','-t','3','-vf','select=not(between(n\\,15\\,30))','-fps_mode','passthrough','-c:v','libx264',rec.mp4Path(1)],15000);
- assert.equal(made.code,0,made.stderr);const before=await rec._scanVideo(rec.mp4Path(1));
- const ass='vfr-test-'+Date.now()+'.ass';fs.writeFileSync(ass,genAss([{vt:0,text:'不补帧'}]));
- try{const result=await rec.burnPartDanmaku(1,ass);assert.equal(result.ok,true,result.stderr);const after=await rec._scanVideo(rec.burnOutPath(1));assert.equal(after.packets.length,before.packets.length);assert.ok(Math.abs(after.duration-before.duration)<.1);}finally{fs.unlinkSync(ass);}
 });
 test('paused sealing releases its admission slot and another recording proceeds',async()=>{
  const fixture=recoveryFixture('seal-queue-'),r=fixture.s.recovery;let releaseA,startedA=false,startedB=false;
@@ -122,7 +107,7 @@ test('shutdown of a genuinely paused sealing process preserves a paused seal jou
 test('a paused sealing journal restores a controllable entry and starts only after resume',async()=>{
  const original=recoveryFixture('restore-seal-'),r=original.s.recovery,rec=new Recorder(path.join(original.directory,'主播_123456_20261027_120000'));
  rec.settings={};r.store.set(rec,{status:'paused',phase:'seal',userPaused:true});
- const {RecoveryController}=require('../src/core/recovery'),post=new PostProcessor(path.join(original.directory,'dm.ass'),{}),s={...original.s,post};
+ const {RecoveryController}=require('../src/core/recovery'),post=new PostProcessor({}),s={...original.s,post};
  s.recovery=new RecoveryController(s,r.store.file);let started=false;
  try{await s.recovery.start();const entry=s.recovery.executions.get(rec.jobId);assert.equal(entry.restored,true);assert.equal(entry.view.status,'paused');
   for(const k of ['recoverPublications','recoverMergePlan','reconcileParts'])entry.rec[k]=async()=>{};entry.rec.remuxAll=async()=>{started=true;return [];};
@@ -130,7 +115,7 @@ test('a paused sealing journal restores a controllable entry and starts only aft
  }finally{s.recovery.close();s.recovery.mediaPool.close();post.close();original.close();}
 });
 test('shutdown wins over a resume request waiting for resources',async()=>{
- const {PauseSignal}=require('../src/core/postprocess'),post=new PostProcessor(path.join(root,'resume-race.ass'),{});let releaseWork,releaseResume;
+ const {PauseSignal}=require('../src/core/postprocess'),post=new PostProcessor({});let releaseWork,releaseResume;
  const rec={part:1,pauseProcessing(){},resumeProcessing:()=>new Promise(r=>releaseResume=r),_abortFfmpeg(){releaseWork?.();}};
  const job={id:'resume-race',recorder:rec};post._process=async()=>{await new Promise(r=>releaseWork=r);if(rec._userAbort)throw new PauseSignal();return {};};
  try{post.enqueue(job);await until(()=>releaseWork);post.pauseTask(job.postId);const pending=post.resumeTask(job.postId);await until(()=>releaseResume);post.prepareShutdown();releaseResume();assert.equal((await pending).ok,false);await until(()=>!post.running.size);assert.equal(job.paused,true);assert.equal(job.view.status,'paused');assert.equal(post.hasRunnable,false);}finally{post.close();releaseWork?.();releaseResume?.();}
@@ -149,9 +134,9 @@ test('unchanged duration probes are reused but changed inputs must be probed aga
 });
 test('canceled jobs remain canceled after restart and retained files are not rediscovered',async()=>{
  const fixture=recoveryFixture('cancel-restart-'),r=fixture.s.recovery;
- const rec=new Recorder(path.join(fixture.directory,'主播_123456_20261027_120000'));rec.part=1;rec.partStarts=[null,Date.now()];rec.settings={burnDanmaku:true,keepRaw:true};
+ const rec=new Recorder(path.join(fixture.directory,'主播_123456_20261027_120000'));rec.part=1;rec.partStarts=[null,Date.now()];rec.settings={keepRaw:true};
  fs.writeFileSync(rec.mp4Path(1),'retained source');r.store.set(rec,{status:'canceled',phase:'seal',error:'用户取消后处理'});
- const {RecoveryController}=require('../src/core/recovery'),post=new PostProcessor(path.join(fixture.directory,'new.ass'),{}),s={...fixture.s,post};s.recovery=new RecoveryController(s,r.store.file);let started=false;post._process=async()=>{started=true;return {};};
+ const {RecoveryController}=require('../src/core/recovery'),post=new PostProcessor({}),s={...fixture.s,post};s.recovery=new RecoveryController(s,r.store.file);let started=false;post._process=async()=>{started=true;return {};};
  try{await s.recovery.start();assert.equal(s.recovery.store.get(rec.jobId).status,'canceled');assert.equal(s.recovery.store.jobs.size,1);assert.equal(post.queue.length,0);assert.equal(started,false);assert.equal(fs.readFileSync(rec.mp4Path(1),'utf8'),'retained source');}
  finally{s.recovery.close();s.recovery.mediaPool.close();post.close();fixture.close();}
 });

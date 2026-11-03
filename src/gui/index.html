@@ -27,7 +27,7 @@
     <div class="layout-head"><strong>后处理</strong><div id="postUpdated" class="sub" role="status"></div><button id="layoutReset" class="mini">恢复默认布局</button><button id="postCollapse" class="mini">收起</button></div>
     <div class="post-scroll">
     <div id="postItems" class="post-items"></div>
-    <div id="postEmpty" class="sub" style="padding:2px 0">暂无任务（录制结束后自动烧录弹幕版）</div>
+    <div id="postEmpty" class="sub" style="padding:2px 0">暂无任务（录制结束后自动收尾）</div>
     </div>
   </div>
   <div id="postSplit" class="layout-split" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="调整后处理区域高度" title="拖动调整后处理区域高度，也可使用方向键" hidden></div>
@@ -66,7 +66,7 @@
     </table>
     <div id="empty" class="empty" hidden>
       <p>还没有监控任何主播</p>
-      <p class="hint">在上方输入直播间链接或房间号, 开播后会自动录制原画 + 弹幕</p>
+      <p class="hint">在上方输入直播间链接或房间号, 开播后会自动录制原画</p>
     </div>
   </main>
   <div id="historySplit" class="layout-split" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="调整历史录制区域高度" title="拖动调整历史录制区域高度，也可使用方向键"></div>
@@ -120,25 +120,23 @@
     <label>保存路径 <input id="setOutDir" type="text" placeholder="recordings = 应用目录下(可填绝对路径)" /></label>
     <label>磁盘最低剩余 <input id="setDisk" type="number" min="0" max="500" /> GB（低于即停止录制）</label>
     <label>定时分段 <input id="setSeg" type="text" placeholder="90 = 分钟; 500MB = 按大小; 0 = 不分段" /></label>
-    <label>最小处理文件 <input id="setMinSize" type="number" min="0" max="100000" /> MB（小于此的分片跳过转封装/烧录, 过滤断流残片, 0=不过滤）</label>
+    <label>最小处理文件 <input id="setMinSize" type="number" min="0" max="100000" /> MB（小于此的分片跳过转封装, 过滤断流残片, 0=不过滤）</label>
     <label>同时处理场数 <select id="setPostConc">
       <option value="1">1 (串行, 最稳)</option>
       <option value="2">2 (同时处理两场)</option>
       <option value="3">3</option>
       <option value="4">4</option>
-    </select>（多场同时烧录可大幅加快排队; 电脑负载高时调回 1）</label>
+    </select>（多场同时收尾可加快排队; 电脑负载高时调回 1）</label>
     <label>录像保留 <input id="setKeep" type="number" min="0" max="3650" /> 天（0=永久保留）</label>
-    <label class="check"><input id="setBurn" type="checkbox" /> 录完自动烧录弹幕版（NVIDIA 显卡加速）</label>
-    <label class="check"><input id="setKeepRaw" type="checkbox" /> 保留无弹幕版（关闭可省一半磁盘, 弹幕jsonl仍在）</label>
     <label class="check"><input id="setMerge" type="checkbox" /> 多段自动拼接为单文件（断流重连/定时分段的分片最终拼回一个视频）</label>
     <label class="check"><input id="setPostQuiet" type="checkbox" /> 启用后处理静音时段</label>
     <label>每天静音开始 <input id="setPostQuietStart" type="time" step="60" /></label>
     <label>每天静音结束 <input id="setPostQuietEnd" type="time" step="60" /></label>
-    <p class="hint">按电脑本地时间，可跨午夜。时段内不启动新的修复、合并或弹幕烧录任务；已开始的任务完整跑完。录制和弹幕采集继续，结束后自动处理排队任务。</p>
+    <p class="hint">按电脑本地时间，可跨午夜。时段内不启动新的修复、合并或拆分任务；已开始的任务完整跑完。录制和弹幕采集继续，结束后自动处理排队任务。</p>
     <label class="check"><input id="setNoSleep" type="checkbox" /> 录制期间阻止系统休眠</label>
     <label class="check"><input id="setAutoStart" type="checkbox" /> 开机自动启动</label>
     <label>Webhook 通知 <input id="setWebhook" type="text" placeholder="https://公网地址/钩子 (开播/录完时POST)" /></label>
-    <p class="hint">存储预估：原画约 2-4 GB/小时·路，含弹幕版（转码后约为原画的3~4.5倍）；建议开启保留天数清理</p>
+    <p class="hint">存储预估：原画约 2-4 GB/小时·路；建议开启保留天数清理</p>
     </div>
     <div class="drawer-actions">
       <button id="btnSaveSettings" class="primary">保存</button>

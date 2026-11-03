@@ -17,7 +17,7 @@ async function stopOrphanWriter(job){
     const output=last[1]||last[2];const base=normalize(job.base);
     const isCapture=normalize(output).startsWith(base+'_part')&&/^_part\d+\.flv$/i.test(normalize(output).slice(base.length));
     const args=[...String(row.CommandLine||'').matchAll(/"([^"\r\n]*)"|([^\s"]+)/g)].map(m=>m[1]??m[2]);
-    const knownInput=args.some(arg=>{try{const p=normalize(arg);return p.startsWith(base+'_part')&&/^_part\d+(?:_弹幕版)?\.(flv|mp4)(?:\.pending\.mp4)?$/i.test(p.slice(base.length));}catch{return false;}});
+    const knownInput=args.some(arg=>{try{const p=normalize(arg);return p.startsWith(base+'_part')&&/^_part\d+\.(flv|mp4)(?:\.pending\.mp4)?$/i.test(p.slice(base.length));}catch{return false;}});
     const isMedia=row.ProcessId===job.recorder?.processingProcessId&&row.ParentProcessId===job.ownerPid&&knownInput;
     if(!isCapture&&!isMedia)continue;
     if(!job.ownerPid||(row.ParentProcessId!==job.ownerPid&&row.ProcessId!==job.recorder?.processId)){

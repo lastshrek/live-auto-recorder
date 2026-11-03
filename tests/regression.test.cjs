@@ -10,7 +10,7 @@ process.env.LR_LOG_DIR=path.join(root,'logs');
 const http = require('node:http');
 const { Recorder, createFfmpegRunner } = require('../src/core/recorder');
 const { Scheduler } = require('../src/core/scheduler');
-const { PostProcessor, genAss } = require('../src/core/postprocess');
+const { PostProcessor } = require('../src/core/postprocess');
 const { DanmakuCapture, isHumanComment } = require('../src/core/danmaku');
 const { pickBestFlv } = require('../src/core/adapter/douyin');
 const { parsePacketHashes, overlapCut } = require('../src/core/media');
@@ -64,8 +64,8 @@ test('removed profile window cannot reappear when its delayed page load finishes
  await sess._profileDomScan('profile');assert.equal(created,1);sess.closeProfileWindow('profile');release();assert.equal(await first,'');assert.equal(sess.profileWins.size,0);
 });
 test('legacy segments migrate while invalid configuration fields are normalized',()=>{
- const {dir,store}=isolatedStore('legacy-');fs.writeFileSync(path.join(dir,'config.json'),JSON.stringify({watchlist:[null,3,{rid:'123456'}],settings:{segmentMin:25,pollIntervalSec:'broken',maxConcurrentRecordings:200,burnDanmaku:'false'}}));
- const c=store.load();assert.equal(c.settings.segment,'25');assert.equal(c.settings.pollIntervalSec,3);assert.equal(c.settings.maxConcurrentRecordings,20);assert.equal(c.settings.burnDanmaku,true);assert.equal(c.watchlist.length,1);
+ const {dir,store}=isolatedStore('legacy-');fs.writeFileSync(path.join(dir,'config.json'),JSON.stringify({watchlist:[null,3,{rid:'123456'}],settings:{segmentMin:25,pollIntervalSec:'broken',maxConcurrentRecordings:200,keepRaw:'no'}}));
+ const c=store.load();assert.equal(c.settings.segment,'25');assert.equal(c.settings.pollIntervalSec,3);assert.equal(c.settings.maxConcurrentRecordings,20);assert.equal(c.settings.keepRaw,true);assert.equal(c.watchlist.length,1);
 });
 test('corrupt configuration restores backup to disk and survives the next load',()=>{
  const {dir,store}=isolatedStore('restore-');const file=path.join(dir,'config.json');fs.writeFileSync(file,'{broken');fs.writeFileSync(file+'.bak',JSON.stringify({watchlist:[{rid:'123456'}],settings:{segment:'0'}}));
@@ -87,8 +87,8 @@ test('a disk write error in the logger is handled without crashing the applicati
 test('failed settings persistence does not partially apply new runtime settings',()=>{
  const s=scheduler(),store=require('../src/core/store');const original=store.save;const settings=s.cfg.settings;
  store.save=()=>{throw Error('simulated full disk');};
- try{assert.throws(()=>s.updateSettings({pollIntervalSec:1,burnDanmaku:false}),/full disk/);}finally{store.save=original;}
- assert.equal(s.cfg.settings,settings);assert.equal(s.post.s,settings);assert.equal(s.cfg.settings.burnDanmaku,undefined);
+ try{assert.throws(()=>s.updateSettings({pollIntervalSec:1,webhookUrl:'https://example.test/hook'}),/full disk/);}finally{store.save=original;}
+ assert.equal(s.cfg.settings,settings);assert.equal(s.post.s,settings);assert.equal(s.cfg.settings.webhookUrl,undefined);
 });
 
 function scheduler() {
@@ -119,18 +119,6 @@ async function clip(rec, part, start, duration, format = 'flv') {
   return file;
 }
 
-test('one truncated comment line cannot discard the other comments or the subtitle video',async()=>{
- const rec=new Recorder(path.join(root,'partial-jsonl'));rec.part=1;rec.startedAt=1000;rec.partStarts=[0,1000];await clip(rec,1,0,2,'mp4');
- const dm=rec.base+'.danmaku.jsonl';const data=JSON.stringify({t:1200,text:'甲：完整评论'})+'\n{broken';fs.writeFileSync(dm,data);
- const post=new PostProcessor(path.join(root,'dm.ass'),{burnDanmaku:true,keepRaw:true,minSizeMB:0});await post._process({recorder:rec,danmakuFile:dm,nickname:'test',mergeComplete:true});
- assert.ok(fs.existsSync(rec.burnOutPath(1)));assert.ok(rec.notices.some(n=>n.includes('1条损坏')));assert.equal(fs.readFileSync(dm,'utf8'),data);
-});
-test('failed comment page startup still allows both complete video versions',async()=>{
- const rec=new Recorder(path.join(root,'missing-jsonl'));rec.part=1;rec.startedAt=1000;rec.partStarts=[0,1000];await clip(rec,1,0,2,'mp4');
- const post=new PostProcessor(path.join(root,'dm.ass'),{burnDanmaku:true,keepRaw:true,minSizeMB:0});await post._process({recorder:rec,danmakuFile:rec.base+'.danmaku.jsonl',nickname:'test',mergeComplete:true});
- assert.ok(fs.existsSync(rec.mp4Path(1)));assert.ok(fs.existsSync(rec.burnOutPath(1)));assert.ok(rec.issues.some(n=>n.includes('没有保存到弹幕')));
-});
-
 test('original quality is preferred, unknown tiers cannot displace it', () => {
   assert.equal(pickBestFlv({ _origin: 'https://x/original_or.flv', FULL_HD1: 'https://x/hd.flv' }), 'https://x/original_or.flv');
   assert.equal(pickBestFlv({ mystery: 'https://x/unknown_or.flv', FULL_HD1: 'https://x/hd.flv' }), 'https://x/hd.flv');
@@ -140,17 +128,6 @@ test('system likes and gifts are filtered while actual comments remain', () => {
   for (const s of ['甲：你好', '乙：主播今天几点下播？', '甲：这个地方很好看', '甲：送给你一首歌', '甲：来了好久才看到']) assert.equal(isHumanComment(s), true, s);
 });
 
-test('rendered comments omit usernames and preserve punctuation inside the body', () => {
-  const ass = genAss([
-    { vt: 0, text: '用户甲：你好，主播' },
-    { vt: 1, text: '用户乙: 现在时间：20:30' },
-    { vt: 2, text: '没有前缀的评论' },
-    { vt: 3, text: '空白用户：   ' },
-  ]);
-  assert.ok(!ass.includes('用户甲') && !ass.includes('用户乙') && !ass.includes('空白用户'));
-  assert.ok(ass.includes('你好，主播') && ass.includes('现在时间：20:30') && ass.includes('没有前缀的评论'));
-  assert.equal(ass.split('\n').filter(line => line.startsWith('Dialogue:')).length, 3);
-});
 test('ambiguous repeated fingerprints do not discard static or looping content', () => {
   const packets = Array.from({ length: 20 }, (_, i) => ({ dts: i / 15, hash: 'repeated' }));
   assert.equal(overlapCut({ packets, start: 0 }, { packets, start: 0 }), null);
@@ -306,7 +283,7 @@ test('a connected but silent collector reconnects with backoff instead of stayin
 });
 test('setConfig applies directory and postprocessing settings together', () => {
   const s = scheduler(); s._applyWatchlist = () => {};
-  const cfg = { watchlist: [], settings: { outputDir: path.join(root, 'new-output'), burnDanmaku: false, keepRaw: false } };
+  const cfg = { watchlist: [], settings: { outputDir: path.join(root, 'new-output'), keepRaw: false } };
   s.setConfig(cfg); assert.equal(s.outDir, cfg.settings.outputDir); assert.equal(s.post.s, cfg.settings); assert.equal(fs.existsSync(s.outDir), true);
 });
 
@@ -336,10 +313,10 @@ test('retention includes room folders and protects active, pending and backup fi
   for(const file of [active,pending,raw,saved])assert.equal(fs.existsSync(file),true,file);
 });
 
-test('classified recording seals raw and subtitle versions in the same room directory', async () => {
+test('classified recording seals the recording in its room directory', async () => {
   const s=scheduler(),t=task();s.outDir=path.join(root,'classified-session');fs.mkdirSync(s.outDir);
-  s.post=new PostProcessor(path.resolve('dm.ass'),{burnDanmaku:true,keepRaw:true,minSizeMB:0});
-  s.cfg.settings={...s.cfg.settings,burnDanmaku:true,keepRaw:true,minSizeMB:0};
+  s.post=new PostProcessor({keepRaw:true,minSizeMB:0});
+  s.cfg.settings={...s.cfg.settings,keepRaw:true,minSizeMB:0};
   const start=Recorder.prototype.start,dmStart=DanmakuCapture.prototype.start;
   Recorder.prototype.start=function(){this.startedAt=Date.now();this.part=1;this.partStarts=[0,this.startedAt];};
   DanmakuCapture.prototype.start=async()=>{};
@@ -351,19 +328,19 @@ test('classified recording seals raw and subtitle versions in the same room dire
     const stopped=await s._stopJob(t,'测试封存');assert.equal(stopped.ok,true);
     while(s.post.busy)await sleep(10);
     assert.equal(path.basename(path.dirname(rec.base)),'分类测试主播_123456');
-    for(const file of [rec.mp4Path(1),rec.burnOutPath(1),rec.base+'.danmaku.jsonl'])assert.equal(fs.existsSync(file),true,file);
+    for(const file of [rec.mp4Path(1),rec.base+'.danmaku.jsonl'])assert.equal(fs.existsSync(file),true,file);
     assert.ok(history.files[0].startsWith('分类测试主播_123456/'));
   }finally{Recorder.prototype.start=start;DanmakuCapture.prototype.start=dmStart;}
 });
 
 test('sealing and subtitle work share one status item without an idle gap', async () => {
-  const pp = new PostProcessor(path.join(root, 'status.ass'), {});
+  const pp = new PostProcessor({});
   const rec = {part:1, issues:[]};
   const view = pp.begin(rec, '状态测试');
   assert.equal(pp.status.busy, true);
   rec.onStage('完整性检查'); assert.equal(pp.status.items[0].stage, '完整性检查');
   let release;
-  pp._process = async () => { rec.onStage('弹幕烧录'); await new Promise(r => {release=r;}); return {}; };
+  pp._process = async () => { rec.onStage('转封装'); await new Promise(r => {release=r;}); return {}; };
   pp.enqueue({recorder:rec, nickname:'状态测试', view});
   assert.equal(pp.status.items.length, 1); assert.equal(pp.status.busy, true);
   release(); while (pp.busy) await sleep(1);
@@ -372,7 +349,7 @@ test('sealing and subtitle work share one status item without an idle gap', asyn
 });
 
 test('another sealing task keeps the status busy after one task fails', () => {
-  const pp = new PostProcessor(path.join(root, 'concurrent-status.ass'), {});
+  const pp = new PostProcessor({});
   const a = {part:1}, b = {part:1};
   const av = pp.begin(a, 'A'), bv = pp.begin(b, 'B');
   pp.finish(av, 'failed', '磁盘写入失败');
@@ -393,7 +370,7 @@ test('successful recovery is a notice rather than a failed recording', async () 
 
 test('a removed task stays visible while its source is being sealed', async () => {
   const s = scheduler(), t = task(); t.state='recording'; s.tasks.set(t.key,t);
-  s.post = new PostProcessor(path.join(root, 'removed-status.ass'), {});
+  s.post = new PostProcessor({});
   let release;
   t.rec={part:1, stop:async()=>{},totalBytes:()=>0,remuxAll:async()=>{
     t.rec.onStage('完整性检查'); await new Promise(r=>{release=r;});return [];
@@ -541,28 +518,6 @@ test('overlapping encoded segments merge without duplicated packets', async () =
   const scan = await rec._scanVideo(rec.flvPath(1));
   assert.ok(scan.duration > 11.5 && scan.duration < 12.6, 'unexpected merged duration ' + scan.duration);
   assert.ok(rec.mergedReplayOffsets[1] > 1.5); assert.equal((await rec.validateMedia(rec.flvPath(1))).ok, true);
-});
-test('autoPartMerge=false is respected by actual subtitle processing', async () => {
-  const rec = new Recorder(path.join(root, 'no-merge')); rec.part = 2; rec.startedAt = 1000; rec.partStarts = [0, 1000, 4000];
-  await clip(rec, 1, 0, 2, 'mp4'); await clip(rec, 2, 3, 2, 'mp4');
-  const dm = path.join(root, 'comments.jsonl'); fs.writeFileSync(dm, '{"t":1500,"text":"甲：你好"}\n{"t":4500,"text":"乙：你好"}\n');
-  // burnPartDanmaku uses the application's fixed dm.ass in cwd.
-  const pp = new PostProcessor(path.resolve('dm.ass'), { autoPartMerge: false, burnDanmaku: true, keepRaw: true, minSizeMB: 0 });
-  await pp._process({ recorder: rec, danmakuFile: dm, nickname: 'test' });
-  assert.equal(rec.part, 2); assert.equal(fs.existsSync(rec.mp4Path(2)), true);
-  assert.equal(fs.existsSync(rec.burnOutPath(1)), true); assert.equal(fs.existsSync(rec.burnOutPath(2)), true);
-});
-
-test('a session with no comments still produces raw and subtitle versions', async () => {
-  const rec = new Recorder(path.join(root, 'no-comments')); rec.part = 1;
-  rec.startedAt = 1000; rec.partStarts = [0, 1000];
-  await clip(rec, 1, 0, 2, 'mp4');
-  const dm = path.join(root, 'empty-comments.jsonl'); fs.writeFileSync(dm, '');
-  const pp = new PostProcessor(path.resolve('dm.ass'), { autoPartMerge: true, burnDanmaku: true, keepRaw: true, minSizeMB: 0 });
-  const result = await pp._process({ recorder: rec, danmakuFile: dm, nickname: 'test' });
-  assert.equal(result.skipped, false);
-  assert.equal(fs.existsSync(rec.mp4Path(1)), true);
-  assert.equal((await rec.validateMedia(rec.burnOutPath(1))).ok, true);
 });
 test('overlap trimming preserves a stream containing B frames', async () => {
   const bSource = path.join(root, 'b-frames.mp4');

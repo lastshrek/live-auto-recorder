@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, shell, powerSaveBlocker, dialog, clipboard } = require('electron');
 
-// 锚定进程工作目录到项目根(弹幕烧录的 ass=dm.ass 相对路径依赖此设定)
+// 锚定进程工作目录到项目根(配置/录像等相对路径依赖此设定)
 process.chdir(path.join(__dirname, '..'));
 
 const log = require('./util/log');

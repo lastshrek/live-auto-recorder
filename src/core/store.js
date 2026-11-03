@@ -15,8 +15,7 @@ const DEFAULT = {
     outputDir: 'recordings',
     minFreeGB: 5,
     maxConcurrentRecordings: 6,
-    burnDanmaku: true, // 录完自动烧录弹幕版
-    keepRaw: true,     // 保留无弹幕版(关闭则烧录成功后删除, 仅存弹幕版)
+    keepRaw: true,     // 兼容旧配置字段; 当前版本只产出单一录像文件, 该值不再影响产物
     segment: '0',      // 默认整场保存, 0=不分段
     quality: 'highest', // 画质偏好: highest=最高(原画), 可降选 FULL_HD1/HD1/SD1/SD2, 无该档自动回落
     minSizeMB: 0,      // 默认保留并处理短场内容
@@ -59,7 +58,7 @@ function load() {
   for(const [key,[min,max]] of Object.entries(ranges)){
     const n=Number(merged.settings[key]);merged.settings[key]=Number.isFinite(n)?Math.max(min,Math.min(max,n)):DEFAULT.settings[key];
   }
-  for(const key of ['burnDanmaku','keepRaw','autoPartMerge','preventSleep','autoStart','postQuietEnabled'])if(typeof merged.settings[key]!=='boolean')merged.settings[key]=DEFAULT.settings[key];
+  for(const key of ['keepRaw','autoPartMerge','preventSleep','autoStart','postQuietEnabled'])if(typeof merged.settings[key]!=='boolean')merged.settings[key]=DEFAULT.settings[key];
   const {validClock}=require('./quiet-hours');
   for(const key of ['postQuietStart','postQuietEnd'])if(!validClock(merged.settings[key]))merged.settings[key]=DEFAULT.settings[key];
   if(merged.settings.postQuietStart===merged.settings.postQuietEnd)merged.settings.postQuietEnabled=false;

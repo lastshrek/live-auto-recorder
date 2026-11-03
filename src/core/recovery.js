@@ -246,7 +246,7 @@ class RecoveryController{
       // of real files need not equal rec.part. The merger checks missing parts.
       if(rec.settings?.autoPartMerge&&rec.part>1&&!rec.issues.length&&files.length&&files.every(f=>f.endsWith('.mp4'))){
         if(await rec.consolidateMp4s())files.splice(0,files.length,rec.mp4Path(1));
-        else rec.issues.push('分片合并未完成，全部原片已保留，不能确认整场双版本完整');
+        else rec.issues.push('分片合并未完成，全部原片已保留，不能确认整场完整');
       }
       checkCanceled();const previous=this.store.get(rec.jobId);
       if(!previous.secs&&files.length){let seconds=0;for(const f of files)if(f.endsWith('.mp4'))seconds+=await rec._probeDuration(f);this.store.set(rec,{secs:Math.round(seconds)});}
@@ -259,7 +259,7 @@ class RecoveryController{
       const paused=!!rec._processingPaused;
       const job=this.store.set(rec,{status:paused?'paused':'queued',phase:error?'seal':'post',userPaused:paused,error,nextAttemptAt:0});
       this.updateHistory(rec,job,'processing',error);this.taskError(rec,error);
-      this.s.post.enqueue({id:job.id,recorder:rec,danmakuFile:rec.base+'.danmaku.jsonl',nickname:job.nickname,settings:{...rec.settings},mergeComplete:true,view,paused});
+      this.s.post.enqueue({id:job.id,recorder:rec,nickname:job.nickname,settings:{...rec.settings},mergeComplete:true,view,paused});
       return {ok:!error,files,error,processing:true,enqueued:true};
     }catch(e){this.admitted.delete(rec.jobId);return this.failed(rec,e,'seal',view);}
     finally{entry.lease?.release();if(this.executions.get(rec.jobId)===entry)this.executions.delete(rec.jobId);this.running.delete(rec.jobId);}
@@ -325,7 +325,7 @@ class RecoveryController{
       await stopOrphanWriter(job);
       if(this.closing||this.store.get(id)?.status==='canceled')return {ok:true,canceled:true};
       if(job.phase==='post'&&!rec.issues.length){
-        this.store.set(rec,{status:'queued',nextAttemptAt:0});this.s.post.enqueue({id,recorder:rec,danmakuFile:rec.base+'.danmaku.jsonl',nickname:job.nickname,settings:rec.settings,mergeComplete:true,view});return {ok:true};
+        this.store.set(rec,{status:'queued',nextAttemptAt:0});this.s.post.enqueue({id,recorder:rec,nickname:job.nickname,settings:rec.settings,mergeComplete:true,view});return {ok:true};
       }
       if(this.closing)return {ok:false,deferred:true,error:'恢复已保留，下次启动继续'};
       this.s.post.finish(view,'processing');view.stage='恢复录像';
@@ -339,7 +339,7 @@ class RecoveryController{
       const names=await fs.promises.readdir(dir);
       for(const file of names){
         if(isFinalVideoName(file))continue;
-        const m=file.match(/^(.*_(\d{6,13})_(\d{8})_(\d{6})(?:_\d+)?)_part(\d+)(?:_弹幕版)?\.(?:flv|mp4)(?:\.pending\.mp4)?$/);
+        const m=file.match(/^(.*_(\d{6,13})_(\d{8})_(\d{6})(?:_\d+)?)_part(\d+)\.(?:flv|mp4)(?:\.pending\.mp4)?$/);
         if(!m)continue;
         const base=path.join(dir,m[1]);if([...this.store.jobs.values()].some(j=>j.base===base))continue;
         const n=+m[5];if(n<1||n>100000)continue;
@@ -348,14 +348,13 @@ class RecoveryController{
     }
     for(const g of groups.values()){
       const rec=new Recorder(g.base);rec.settings={...this.s.cfg.settings};rec.part=g.part;
-      if(Array.from({length:rec.part},(_,i)=>i+1).every(i=>fs.existsSync(rec.burnOutPath(i))&&(!rec.settings.keepRaw||fs.existsSync(rec.mp4Path(i)))))continue;
-      if(!rec.settings.burnDanmaku&&Array.from({length:rec.part},(_,i)=>i+1).every(i=>fs.existsSync(rec.mp4Path(i))))continue;
+      if(Array.from({length:rec.part},(_,i)=>i+1).every(i=>fs.existsSync(rec.mp4Path(i))))continue;
       const d=g.date,t=g.time;rec.startedAt=new Date(+d.slice(0,4),+d.slice(4,6)-1,+d.slice(6),+t.slice(0,2),+t.slice(2,4),+t.slice(4)).getTime();
       rec.partStarts=[0];for(let i=1;i<=rec.part;i++){
         let at=rec.startedAt;for(const f of [rec.flvPath(i),rec.mp4Path(i)])try{const s=await fs.promises.stat(f);at=i===1?rec.startedAt:s.birthtimeMs||s.mtimeMs;break;}catch{}
         rec.partStarts[i]=at;
       }
-      if(rec.part>1)rec.notices.push('旧录像缺少精确分片记录，弹幕时间轴按文件创建时间推定');
+      if(rec.part>1)rec.notices.push('旧录像缺少精确分片记录，分片起点按文件创建时间推定');
       const nickname=path.basename(rec.base).split('_'+g.rid+'_')[0];
       this.store.set(rec,{status:'recovering',phase:'seal',rid:g.rid,nickname,outputDir:this.s.outDir,secs:0,attempts:0,ownerPid:0,error:'发现待恢复录像'});
     }
@@ -386,7 +385,7 @@ class RecoveryController{
           view.status='paused';view.stage='已暂停';
           this.executions.set(job.id,{rec,view,restored:true});continue;
         }
-        this.s.post.enqueue({id:job.id,recorder:rec,danmakuFile:rec.base+'.danmaku.jsonl',nickname:job.nickname,settings:rec.settings,mergeComplete:true,view,paused:true});
+        this.s.post.enqueue({id:job.id,recorder:rec,nickname:job.nickname,settings:rec.settings,mergeComplete:true,view,paused:true});
         continue;
       }
       if(job.status==='failed'&&!job.nextAttemptAt||job.status==='warning'){this.s.post.finish(view,job.status,job.error);continue;}

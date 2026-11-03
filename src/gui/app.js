@@ -313,7 +313,7 @@ function renderPost() {
     else if(v.status==='waiting'){dotCls='q';label='等待恢复';}
     else if(v.status==='paused'){dotCls='q';label='已暂停';}
     else if(v.status==='quiet'){dotCls='q';label='静音时段等待';}
-    else if (v.status === 'skipped') { dotCls = 'd'; label = '原片完成·弹幕跳过'; }
+    else if (v.status === 'skipped') { dotCls = 'd'; label = '原片完成'; }
     else if (v.status === 'warning') { dotCls = 'f'; label = '需检查'; }
     else if(v.status==='recovered'){dotCls='d';label='已修复';}
     else { dotCls = 'd'; label = '完成'; }
@@ -340,7 +340,7 @@ function renderPost() {
         const clock = finish.toLocaleTimeString('zh-CN', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
         eta.textContent = `本阶段约剩${remaining >= 60 ? Math.ceil(remaining / 60) + '分钟' : remaining + '秒'} · 预计 ${clock} 完成`;
       } else eta.textContent = known && pct >= 99 ? '正在收尾，预计时间更新中' : '预计完成时间：正在估算';
-      eta.title = '按当前阶段的实际处理速度估算，后续阶段会重新计算；并非整场双版本全部完成时间。';
+      eta.title = '按当前阶段的实际处理速度估算，后续阶段会重新计算；并非整场收尾全部完成时间。';
       row.appendChild(eta);
     } else if(v.status==='quiet') {
       const eta=document.createElement('span');eta.className='pi-eta';
@@ -476,8 +476,6 @@ function openDrawer() {
   $('setMinSize').value = s.minSizeMB ?? 0;
   $('setPostConc').value = String(Math.max(1, Math.min(4, Number(s.postConcurrency) || 1)));
   $('setKeep').value = s.keepDays ?? 0;
-  $('setBurn').checked = !!s.burnDanmaku;
-  $('setKeepRaw').checked = !!s.keepRaw;
   $('setMerge').checked = s.autoPartMerge !== false;
   $('setPostQuiet').checked=!!s.postQuietEnabled;
   $('setPostQuietStart').value=s.postQuietStart||'23:00';
@@ -513,8 +511,6 @@ $('btnSaveSettings').onclick = safe(async () => {
       minSizeMB: +$('setMinSize').value,
       postConcurrency: +$('setPostConc').value,
       keepDays: +$('setKeep').value,
-      burnDanmaku: $('setBurn').checked,
-      keepRaw: $('setKeepRaw').checked,
       autoPartMerge: $('setMerge').checked,
       postQuietEnabled: $('setPostQuiet').checked,
       postQuietStart: $('setPostQuietStart').value,

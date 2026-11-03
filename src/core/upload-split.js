@@ -33,7 +33,7 @@ async function splitFile(rec,source,maxBytes=LIMIT){
 }
 async function splitRecorder(rec,maxBytes=LIMIT){
  rec.uploadParts ||= {};
- for(let part=1;part<=rec.part;part++)for(const source of [rec.mp4Path(part),rec.burnOutPath(part)]){
+ for(let part=1;part<=rec.part;part++)for(const source of [rec.mp4Path(part)]){
   if(!fs.existsSync(source)||fs.statSync(source).size<maxBytes)continue;
   const existing=rec.uploadParts[source];
   if(existing&&existing.sourceIdentity===identity(source)&&existing.parts.every(p=>fs.existsSync(p.file)&&identity(p.file)===p.identity&&fs.statSync(p.file).size<maxBytes))continue;

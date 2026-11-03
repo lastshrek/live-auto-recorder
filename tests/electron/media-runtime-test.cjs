@@ -18,16 +18,16 @@ app.whenReady().then(async()=>{
   const pause=new Recorder(path.join(root,'pause'));records.push(pause);let latest;pause.onProgress=p=>latest=p;
   const running=pause._runFfmpeg(['-y','-v','error','-re','-i',remuxed[0],'-c','copy',pause.base+'.mp4'],9000,false,6);
   await until(()=>pause._activeProc&&latest?.processedSec>0);const pid=pause._activeProc.pid;pause.pauseProcessing();const at=latest.processedSec;await sleep(600);assert.equal(latest.processedSec,at);await pause.resumeProcessing();assert.equal(pause._activeProc.pid,pid);assert.equal((await running).code,0);results.push('Electron实际暂停/恢复保持同一FFmpeg进程与进度');
-  pool=new MediaPool(()=>2);post=new PostProcessor(path.join(process.cwd(),'dm.ass'),{postConcurrency:2,burnDanmaku:true,keepRaw:true});
+  pool=new MediaPool(()=>2);post=new PostProcessor({postConcurrency:2,keepRaw:true});
   for(let n=0;n<2;n++){
    const rec=new Recorder(path.join(root,'parallel'+n));records.push(rec);rec.part=1;rec.partStarts=[0,0];rec.startedAt=0;rec.mediaPool=pool;
-   fs.copyFileSync(remuxed[0],rec.mp4Path(1));const dm=rec.base+'.jsonl';fs.writeFileSync(dm,JSON.stringify({t:1000,body:n?'第二场独立弹幕':'第一场独立弹幕',text:'评论'}));
-   post.enqueue({id:'parallel'+n,recorder:rec,danmakuFile:dm,mergeComplete:true});
+   fs.copyFileSync(remuxed[0],rec.mp4Path(1));rec._probeDuration=async()=>6;
+   post.enqueue({id:'parallel'+n,recorder:rec,mergeComplete:true});
   }
   await until(()=>!post.running.size&&!post.queue.length);
   assert.equal(post.items.every(v=>v.status==='done'),true,JSON.stringify(post.items));
-  for(const rec of records.slice(-2)){assert.equal((await rec.validateMedia(rec.burnOutPath(1))).ok,true);assert.ok(Math.abs(await rec._probeDuration(rec.mp4Path(1))-await rec._probeDuration(rec.burnOutPath(1)))<.1);}
-  results.push('两路真实弹幕压制、独立字幕、完整解码和双版本时长核对通过');
+  for(const rec of records.slice(-2))assert.equal((await rec.validateMedia(rec.mp4Path(1))).ok,true);
+  results.push('两路并行收尾、完整解码核对通过');
   fs.writeFileSync(path.join(__dirname,'media-runtime-results.json'),JSON.stringify({passed:true,results,root},null,2));app.exit(0);
  }catch(e){fs.writeFileSync(path.join(__dirname,'media-runtime-results.json'),JSON.stringify({passed:false,error:e.stack,results,root},null,2));for(const rec of records)rec._abortFfmpeg();app.exit(1);}
  finally{post?.close();pool?.close();server?.close();}

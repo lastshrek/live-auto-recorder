@@ -37,7 +37,7 @@ class Scheduler {
     this.stopped = false;
     this.outDir = this._resolveOutDir(cfg.settings.outputDir);
     fs.mkdirSync(this.outDir, { recursive: true });
-    this.post = new PostProcessor(path.join(ROOT, 'dm.ass'), cfg.settings);
+    this.post = new PostProcessor(cfg.settings);
     this.post.onUpdate = () => this.onEvent && this.onEvent('post', this.post.status);
     this.onEvent = null; // 由 main 注入: (type, data) => void
     // 全局请求闸门: 所有轮询请求串行 + 最小间隔(防大量房间时聚合请求过猛触发风控)
@@ -599,14 +599,13 @@ class Scheduler {
       if (settings.autoPartMerge && rec.part > 1 && !(rec.issues && rec.issues.length) &&
           files.length && files.every((f) => f.endsWith('.mp4'))) {
         if (await rec.consolidateMp4s()) files = [rec.mp4Path(1)];
-        else rec.issues.push('分片合并未完成，全部原片已保留，不能确认整场双版本完整');
+        else rec.issues.push('分片合并未完成，全部原片已保留，不能确认整场完整');
       }
       log.info(`${tag} 录制完成: ${secs}s, ${totalMB}MB, 文件:`, files.map((f) => path.basename(f)));
-      // 弹幕版烧录入队(录制链路已结束, 后处理串行执行)
+      // 收尾任务入队(录制链路已结束, 后处理串行执行)
       if (files.length) {
         this.post.enqueue({
           recorder: rec,
-          danmakuFile: task.basePath + '.danmaku.jsonl',
           nickname: task.lastInfo?.nickname || task.rid,
           settings: { ...settings },
           mergeComplete: true,
@@ -719,7 +718,6 @@ class Scheduler {
       }
     }
     if (Number.isFinite(+patch.keepDays)) s.keepDays = Math.min(3650, Math.max(0, +patch.keepDays));
-    if (typeof patch.burnDanmaku === 'boolean') s.burnDanmaku = patch.burnDanmaku;
     if (typeof patch.keepRaw === 'boolean') s.keepRaw = patch.keepRaw;
     if (typeof patch.autoStart === 'boolean') s.autoStart = patch.autoStart;
     if (typeof patch.webhookUrl === 'string') s.webhookUrl = patch.webhookUrl.slice(0, 500);
@@ -761,15 +759,15 @@ class Scheduler {
     const stopping = jobs.map((t) => this._stopJob(t, '应用退出'));
     await Promise.allSettled([...stopping, ...(this.pendingStops || []),...(this.recoveryPromise?[this.recoveryPromise]:[]),...(this.recovery?[this.recovery.sealTail]:[])]);
     if(options.deferProcessing&&this.recovery){while(this.post.running.size)await new Promise(r=>setTimeout(r,100));this.recovery.close();this.post.close?.();this.recovery.mediaPool.close();return;}
-    // 等待弹幕烧录队列排空再退出；长场次不能按固定15分钟截断
+    // 等待收尾队列排空再退出；长场次不能按固定15分钟截断
     const pending=()=>this.post.busy||(this.post.queue.length&&this.post.hasRunnable!==false);
     if (pending()) {
-      log.info(`[sched] 退出前等待弹幕烧录完成 (待处理 ${this.post.queue.length} 场)...`);
+      log.info(`[sched] 退出前等待收尾处理完成 (待处理 ${this.post.queue.length} 场)...`);
       const t0 = Date.now();
       let warned=false;
       while (pending()) {
         await new Promise((r) => setTimeout(r, 2000));
-        if(!warned&&Date.now()-t0>=15*60*1000){warned=true;log.warn('[sched] 处理超过15分钟，继续等待以保留弹幕版');}
+        if(!warned&&Date.now()-t0>=15*60*1000){warned=true;log.warn('[sched] 处理超过15分钟，继续等待以完成收尾');}
       }
       log.info('[sched] 全部烧录完成, 可以安全退出');
     }

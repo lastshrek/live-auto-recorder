@@ -28,7 +28,7 @@ function makePlan(rec,job){
   const directory=path.dirname(rec.base),{date,time}=stamp(rec,job);
   const nickname=shorten(component(job.nickname,'直播间'),48),topic=component(job.title,'未命名主题');
   const sources=[];
-  for(let part=1;part<=rec.part;part++)for(const [kind,source] of [['纯享版',rec.mp4Path(part)],['弹幕版',rec.burnOutPath(part)]])if(fs.existsSync(source)){
+  for(let part=1;part<=rec.part;part++)for(const [kind,source] of [['纯享版',rec.mp4Path(part)]])if(fs.existsSync(source)){
     const split=rec.uploadParts?.[source];
     if(split){
       const {identity:splitIdentity,LIMIT}=require('./upload-split');
@@ -55,11 +55,11 @@ function makePlan(rec,job){
 }
 function applyPlan(rec,entries,{renameFinal=false}={}){
   try {
-  const allowed=new Set();for(let i=1;i<=rec.part;i++){allowed.add(path.resolve(rec.mp4Path(i)));allowed.add(path.resolve(rec.burnOutPath(i)));}
+  const allowed=new Set();for(let i=1;i<=rec.part;i++)allowed.add(path.resolve(rec.mp4Path(i)));
   for(const split of Object.values(rec.uploadParts||{}))for(const piece of split.parts||[])if(typeof piece.file==='string'&&piece.file.startsWith(split.source+'.split-')&&path.dirname(path.resolve(piece.file))===path.dirname(path.resolve(rec.base)))allowed.add(path.resolve(piece.file));
   for(const entry of entries){
     const finalSource=renameFinal&&path.dirname(path.resolve(entry.source))===path.dirname(path.resolve(rec.base))&&isFinalVideoName(path.basename(entry.source));
-    if((!allowed.has(path.resolve(entry.source))&&!finalSource)||path.dirname(path.resolve(entry.destination))!==path.dirname(path.resolve(rec.base))||!/_((纯享版)|(弹幕版))\.mp4$/.test(entry.destination))throw Error('录像命名计划路径无效，原文件已保留');
+    if((!allowed.has(path.resolve(entry.source))&&!finalSource)||path.dirname(path.resolve(entry.destination))!==path.dirname(path.resolve(rec.base))||!/_纯享版\.mp4$/.test(entry.destination))throw Error('录像命名计划路径无效，原文件已保留');
     if(fs.existsSync(entry.destination)){
       if(!matches(entry.destination,entry.identity))throw Error('目标录像已存在，未覆盖任何文件');
       if(fs.existsSync(entry.source)){
@@ -84,7 +84,7 @@ function applyPlan(rec,entries,{renameFinal=false}={}){
 }
 function makeArchivePlan(rec){
   const dir=path.join(path.dirname(rec.base),'超大原片备份');const allowed=new Set();
-  for(let i=1;i<=rec.part;i++){allowed.add(rec.mp4Path(i));allowed.add(rec.burnOutPath(i));}
+  for(let i=1;i<=rec.part;i++)allowed.add(rec.mp4Path(i));
   return Object.keys(rec.uploadParts||{}).map(source=>{
     if(!allowed.has(source)||!fs.existsSync(source))throw Error('超大原片不存在，无法安全归档');
     const target=path.join(dir,path.basename(source));
@@ -96,7 +96,7 @@ function applyArchivePlan(rec,entries){
   const dir=path.join(path.dirname(rec.base),'超大原片备份');
   if(!entries?.length)return;
   fs.mkdirSync(dir,{recursive:true});const stat=fs.lstatSync(dir);if(!stat.isDirectory()||stat.isSymbolicLink())throw Error('超大原片备份目录不安全');
-  const allowed=new Set();for(let i=1;i<=rec.part;i++){allowed.add(path.resolve(rec.mp4Path(i)));allowed.add(path.resolve(rec.burnOutPath(i)));}
+  const allowed=new Set();for(let i=1;i<=rec.part;i++)allowed.add(path.resolve(rec.mp4Path(i)));
   for(const e of entries){
     if(!allowed.has(path.resolve(e.source))||path.dirname(path.resolve(e.target))!==path.resolve(dir)||path.basename(e.source)!==path.basename(e.target))throw Error('超大原片归档路径无效');
     if(fs.existsSync(e.target)){
@@ -110,10 +110,10 @@ function applyArchivePlan(rec,entries){
 }
 function videoFiles(rec,job){
   if(job.publicationPlan?.length)return job.publicationPlan.map(entry=>fs.existsSync(entry.destination)?entry.destination:entry.source).filter(file=>fs.existsSync(file));
-  const files=[];for(let i=1;i<=rec.part;i++)for(const file of [rec.mp4Path(i),rec.burnOutPath(i)])if(fs.existsSync(file))files.push(file);
+  const files=[];for(let i=1;i<=rec.part;i++){const file=rec.mp4Path(i);if(fs.existsSync(file))files.push(file);}
   return files;
 }
-function isFinalVideoName(name){return /^\d{4}-\d{2}-\d{2}(?:凌晨)?_.+_\d{2}-\d{2}-\d{2}_.+_(纯享版|弹幕版)\.mp4$/.test(name);}
+function isFinalVideoName(name){return /^\d{4}-\d{2}-\d{2}(?:凌晨)?_.+_\d{2}-\d{2}-\d{2}_.+_纯享版\.mp4$/.test(name);}
 function dateMigration(rec,job){
   if(job.namingMigrationPlan?.length)return job.namingMigrationPlan;
   const date=stamp(rec,job).date;
