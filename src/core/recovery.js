@@ -189,6 +189,35 @@ class RecoveryController{
     this.bind(rec,task);return rec.jobId;
   }
   bases(){return [...this.store.jobs.values()].filter(j=>!DONE.has(j.status)).map(j=>j.base);}
+  // 源文件是否还在: 任务记录的 base 目录与任一分片/产物。
+  // 只在"确实记录过分片、而分片全都不见了"时才判定丢失 —— 刚创建还未落盘的
+  // 任务(part=0 或从未有过文件)不算丢失, 否则会误杀正在恢复中的任务。
+  sourceStillPresent(job){
+    const state=job?.recorder||{};
+    const part=Number(state.part)||0;
+    const hasHistory=part>0||(Array.isArray(state.partStarts)&&state.partStarts.length>1)||!!state.lastProgressAt;
+    try{
+      const dir=path.dirname(job.base);
+      if(!fs.existsSync(dir))return !hasHistory; // 从未开始过就无所谓"丢失"
+      const prefix=path.basename(job.base);
+      for(const name of fs.readdirSync(dir)){
+        if(!name.startsWith(prefix))continue;
+        const rest=name.slice(prefix.length);
+        if(/^_part\d+\.(flv|mp4)$/.test(rest)||/^_part\d+\.(flv|mp4)\.pending\.mp4$/.test(rest)||rest==='.danmaku.jsonl')return true;
+      }
+      return !hasHistory;
+    }catch{return true;} // 读不到目录时保守认为仍在, 交给后续步骤判定
+  }
+  // 源文件已被删除: 结案并说明原因, 不再重试。
+  abandonMissingSource(job,view){
+    const rec=restoreRecorder(job,Recorder);
+    const note='源文件已不存在（录像目录可能已被手动删除），任务已结束';
+    const state=this.store.set(rec,{status:'canceled',phase:job.phase||'seal',error:note,nextAttemptAt:0,attempts:0,waitReason:'',sourceMissing:true});
+    try{this.updateHistory(rec,state,'canceled',note);}catch(e){log.warn('[recovery] 结案记录保存失败:',e.message);}
+    if(view)this.s.post.finish(view,'canceled',note);
+    log.warn('[recovery] 任务源文件缺失，已结案:',job.id,path.basename(job.base));
+    return state;
+  }
   view(rec,job){
     let v=this.s.post.items.find(v=>v.id===job.id);
     if(!v)v=this.s.post.begin(rec,job.nickname);
@@ -380,6 +409,12 @@ class RecoveryController{
         continue;
       }
       if(!path.isAbsolute(job.base)||!/_\d{6,13}_\d{8}_\d{6}(?:_\d+)?$/.test(path.basename(job.base)))continue;
+      // 录像目录/分片已被删除: 直接结案, 不要进入永远失败的恢复循环
+      if(!this.sourceStillPresent(job)){
+        const rec=restoreRecorder(job,Recorder);
+        this.abandonMissingSource(job,this.view(rec,job));
+        continue;
+      }
       const rec=restoreRecorder(job,Recorder),view=this.view(rec,job);
       if(job.status==='paused'||job.userPaused){
         try{await stopOrphanWriter(job,{log});}catch(e){
@@ -410,6 +445,11 @@ class RecoveryController{
       for(const job of [...this.store.jobs.values()].sort((a,b)=>this.orderOf(a.id)-this.orderOf(b.id))){
         if(this.closing)break;
         if(job.historyError){const rec=restoreRecorder(job,Recorder);this.updateHistory(rec,job,job.status,job.error||'');}
+        // 运行期间用户删掉了录像目录: 立即结案, 避免每 10 秒重试一次的无效循环
+        if(!DONE.has(job.status)&&job.status!=='recording'&&!this.sourceStillPresent(job)){
+          this.abandonMissingSource(job,this.s.post.items.find(v=>v.id===job.id));
+          continue;
+        }
         if(job.waitReason==='quiet'&&job.status==='waiting'){
           if(!this.quietInfo().active&&!job.userPaused)this.requestRetry(job.id);
         }else if(!job.userPaused&&['waiting','failed','recovering'].includes(job.status)&&job.nextAttemptAt&&job.nextAttemptAt<=Date.now())this.requestRetry(job.id);

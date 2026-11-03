@@ -76,6 +76,8 @@ test('orphan cleanup stops only a recorded media child with matching owner and i
 test('paused jobs survive restart without starting FFmpeg or losing their queue entry',async()=>{
  const {RecoveryController}=require('../src/core/recovery');const directory=fs.mkdtempSync(path.join(root,'restart-'));
  const rec=new Recorder(path.join(directory,'主播_123456_20261027_120000'));rec.part=1;rec.partStarts=[0,Date.now()];rec.settings={keepRaw:true};
+ // 造出真实分片: 恢复流程会核对源文件是否仍在, 没有文件会被判为已删除而结案
+ fs.writeFileSync(rec.flvPath(1),'fixture');
  const make=()=>{const post=new PostProcessor({});const s={cfg:{settings:{}},tasks:new Map(),post,outDir:directory,history:[],historyFile:path.join(directory,'history.json'),freeBytes:()=>1024**4};s.recovery=new RecoveryController(s,path.join(directory,'jobs.json'));return s;};
  const first=make();first.recovery.store.set(rec,{status:'paused',phase:'post',userPaused:true,nickname:'主播'});first.post.close();first.recovery.mediaPool.close();
  const restored=make();let ran=false;restored.post._process=async()=>{ran=true;return {};};
