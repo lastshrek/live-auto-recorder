@@ -35,17 +35,61 @@ const DEFAULT = {
 function load() {
   let c = null;
   let recovered=false;
-  try {
-    c = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    if(!c||typeof c!=='object'||Array.isArray(c))throw new Error('配置结构无效');
-  } catch (e) {
-    // 配置损坏: 绝不抛出(主进程一旦中断会变无窗口无托盘的僵尸), 留证后回退 .bak → 默认
-    if(e.code!=='ENOENT')try { fs.renameSync(CONFIG_PATH, CONFIG_PATH + '.corrupt-' + Date.now()); } catch {}
-    try { c = JSON.parse(fs.readFileSync(CONFIG_PATH + '.bak', 'utf8')); } catch { c = null; }
-    if(!c||typeof c!=='object'||Array.isArray(c))c=null;
-    if (!c) { save(structuredClone(DEFAULT)); return structuredClone(DEFAULT); }
-    recovered=true;
+  const parsed = readConfigWithRetry();
+  if (parsed.ok) {
+    c = parsed.value;
+  } else {
+    // 重试仍失败才判定为损坏。留证后回退 .bak → 默认。
+    // 合法 JSON 语法错误与结构非法都算损坏; 瞬时 I/O 错误绝不重命名、绝不用默认值覆盖。
+    if (parsed.transient) {
+      const fallback = tryReadJson(CONFIG_PATH + '.bak');
+      if (fallback) { c = fallback; recovered = true; }
+      else {
+        // 读不到又无备份: 只返回内存默认值, 不写盘 —— 保留磁盘上的原文件等待下次成功读取
+        // 纯配置层不引入日志依赖(便于隔离测试): 用 stderr 留一条可追溯线索
+        console.error('[config] 配置暂时无法读取，本次使用默认值且不改写文件:', parsed.error && parsed.error.message);
+        return mergeConfig(structuredClone(DEFAULT), false, {noSave:true});
+      }
+    } else {
+      if(parsed.error?.code!=='ENOENT')try { fs.renameSync(CONFIG_PATH, CONFIG_PATH + '.corrupt-' + Date.now()); } catch {}
+      const fallback = tryReadJson(CONFIG_PATH + '.bak');
+      if (fallback) { c = fallback; recovered = true; }
+      else { save(structuredClone(DEFAULT)); return structuredClone(DEFAULT); }
+    }
   }
+  return mergeConfig(c,recovered);
+}
+
+// 读取并解析配置。原子写(临时文件+rename)保证读到的一定是完整旧版或新版,
+// 但外部工具可能直接截断重写同一文件 —— 此时短暂重试即可读到完整内容。
+function readConfigWithRetry(){
+  let lastError=null;
+  for(let attempt=0;attempt<4;attempt++){
+    if(attempt)syncSleep(25);
+    let raw;
+    try{ raw=fs.readFileSync(CONFIG_PATH,'utf8'); }
+    catch(e){ lastError=e; if(e.code==='ENOENT')break; continue; } // 文件被替换的瞬间会短暂 ENOENT
+    try{
+      const value=JSON.parse(raw);
+      if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('配置结构无效');
+      return {ok:true,value};
+    }catch(e){ lastError=e; }
+  }
+  // 语法/结构错误视为损坏; 其余(EMFILE/EACCES/EIO 等)是瞬时故障
+  const corrupt=!!lastError&&(/JSON|结构无效|Unexpected|position \d+/.test(String(lastError.message)));
+  return {ok:false,transient:!corrupt,error:lastError};
+}
+function tryReadJson(file){
+  try{const value=JSON.parse(fs.readFileSync(file,'utf8'));return (value&&typeof value==='object'&&!Array.isArray(value))?value:null;}catch{return null;}
+}
+// 同步睡眠: 仅用于启动/热重载路径的短暂重试
+function syncSleep(ms){
+  try{Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);}catch{const end=Date.now()+ms;while(Date.now()<end);}
+}
+
+// 合并默认值 + 归一化 + 迁移。读取路径与重试路径共用, 避免两套逻辑漂移。
+// noSave: 本次结果只用于内存(磁盘上的配置暂时读不到), 任何情况下都不写回。
+function mergeConfig(c,recovered,{noSave=false}={}){
   const merged = {
     ...structuredClone(DEFAULT),
     ...c,
@@ -90,11 +134,11 @@ function load() {
     }
     merged.watchlist = [...best.values()];
     // 仅当去重真正减少条数时才写回: 无条件save会改mtime→热重载循环触发(读一次写一次)
-    if (merged.watchlist.length !== before) {
+    if (merged.watchlist.length !== before && !noSave) {
       try { save(merged); } catch {}
     }
   }
-  if(recovered){try{writeJson(CONFIG_PATH,merged,{space:2});}catch{}}
+  if(recovered&&!noSave){try{writeJson(CONFIG_PATH,merged,{space:2});}catch{}}
   return merged;
 }
 

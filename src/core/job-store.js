@@ -29,9 +29,15 @@ class JobStore{
     // Canceled jobs are tombstones: removing them would let scan() rediscover
     // their retained source files and start the canceled work again.
     const completed=[...this.jobs.values()].filter(j=>DONE.has(j.status)&&j.status!=='canceled').sort((a,b)=>b.updatedAt-a.updatedAt);
-    for(const job of completed.slice(300))this.jobs.delete(job.id);
+    const evicted=completed.slice(300);
+    for(const job of evicted)this.jobs.delete(job.id);
     try{writeJson(this.file,{version:1,jobs:[...this.jobs.values()]},{backup:true});this.error='';return true;}
-    catch(e){this.error=e.message;log.error('[jobs] 任务状态暂未保存，将重试:',e.message);return false;}
+    catch(e){
+      // 写盘失败必须回滚内存: 否则被裁剪的已完成任务会凭空消失, 而磁盘上仍是旧文件,
+      // 内存与磁盘从此不一致, 后续任何一次成功写入都会把丢失固化下来。
+      for(const job of evicted)if(!this.jobs.has(job.id))this.jobs.set(job.id,job);
+      this.error=e.message;log.error('[jobs] 任务状态暂未保存，将重试:',e.message);return false;
+    }
   }
   set(rec,patch={}){
     if(!rec.jobId){const known=[...this.jobs.values()].find(j=>j.base===rec.base);rec.jobId=known?.id||randomUUID();}

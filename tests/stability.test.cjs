@@ -173,6 +173,19 @@ test('an unwritable journal defers processing without deleting source files',asy
  assert.equal(result.deferred,true);assert.ok(fs.existsSync(rec.flvPath(1)));assert.equal(fs.existsSync(rec.mp4Path(1)),false);
  await s.recovery.retry(rec.jobId,true);await drain(s.post);assert.equal(s.recovery.store.get(rec.jobId).status,'done');
 });
+test('a failed job-state write rolls back the in-memory eviction instead of losing tasks',()=>{
+ const dir=fs.mkdtempSync(path.join(root,'jobs-rollback-')),file=path.join(dir,'jobs.json');
+ const jobs=Array.from({length:305},(_,i)=>({id:'done-'+i,base:path.join(dir,'b'+i),status:'done',phase:'publish',updatedAt:1000+i,nickname:'n',recorder:{part:1,partStarts:[0]}}));
+ fs.writeFileSync(file,JSON.stringify({version:1,jobs}));
+ const store=new JobStore(file);const before=store.jobs.size;assert.equal(before,305);
+ const realRename=fs.renameSync;fs.renameSync=()=>{const e=Error('simulated write failure');e.code='EIO';throw e;};
+ let ok;
+ try{ ok=store.persist(); } finally { fs.renameSync=realRename; }
+ assert.equal(ok,false);
+ assert.equal(store.jobs.size,before,'写盘失败时被裁剪的已完成任务必须回到内存');
+ assert.ok(store.error);
+});
+
 test('additional fragments missing from the last checkpoint are discovered on recovery',async()=>{
  const {s,rec,dir}=await job('extra-fragment');await command(['-y','-v','error','-ss','0','-i',await fixture(),'-t','4','-c','copy',rec.flvPath(1)]);rec.checkpoint();
  await command(['-y','-v','error','-ss','4','-i',await fixture(),'-t','4','-c','copy',rec.flvPath(2)]);

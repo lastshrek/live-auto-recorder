@@ -78,7 +78,13 @@ class RecoveryController{
     if(!job||DONE.has(job.status)||job.status==='recording')return {ok:false,error:'任务已结束或不存在'};
     const post=this.s.post._find(id), entry=this.executions.get(id);
     const previous={...job};job.status='canceled';job.postHidden=true;job.error='';job.nextAttemptAt=0;job.userPaused=false;
-    if(!this.store.persist()){Object.assign(job,previous);return {ok:false,error:'取消状态保存失败，请重试'};}
+    if(!this.store.persist()){
+      Object.assign(job,previous);
+      // 把真实原因带给用户/日志: 只说"请重试"会让人反复点同一个必然失败的按钮。
+      const reason=this.store.error?`（${this.store.error}）`:'';
+      log.error('[post] 取消失败，状态无法写入:',this.store.error||'未知原因');
+      return {ok:false,error:'取消状态保存失败，请重试'+reason};
+    }
     this.admitted.delete(id);
     const rec=post?.recorder||entry?.rec;
     if(rec){rec._canceled=true;rec._userAbort=true;rec._processingPaused=false;rec._abortFfmpeg?.();}

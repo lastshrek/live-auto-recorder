@@ -70,6 +70,25 @@ test('corrupt configuration restores backup to disk and survives the next load',
  const {dir,store}=isolatedStore('restore-');const file=path.join(dir,'config.json');fs.writeFileSync(file,'{broken');fs.writeFileSync(file+'.bak',JSON.stringify({watchlist:[{rid:'123456'}],settings:{segment:'0'}}));
  assert.equal(store.load().watchlist[0].rid,'123456');assert.equal(JSON.parse(fs.readFileSync(file)).watchlist[0].rid,'123456');assert.equal(store.load().watchlist.length,1);
 });
+test('a momentarily unreadable configuration is never mistaken for corruption',()=>{
+ const {dir,store}=isolatedStore('transient-');const file=path.join(dir,'config.json');
+ const good=JSON.stringify({watchlist:[{rid:'123456'},{rid:'654321'}],settings:{pollIntervalSec:4}});
+ fs.writeFileSync(file,good);fs.writeFileSync(file+'.bak',JSON.stringify({watchlist:[],settings:{}}));
+ // 模拟读到一半的文件: 前两次读取返回被截断的内容, 之后恢复正常
+ const realRead=fs.readFileSync;let reads=0;
+ fs.readFileSync=function(target,...rest){
+   if(path.resolve(String(target))===path.resolve(file)&&reads++<2)return good.slice(0,20);
+   return realRead.call(fs,target,...rest);
+ };
+ try{
+   const c=store.load();
+   assert.equal(c.watchlist.length,2,'瞬时故障不能丢掉监控列表');
+   assert.equal(c.settings.pollIntervalSec,4);
+ } finally { fs.readFileSync=realRead; }
+ assert.equal(fs.readdirSync(dir).some(f=>f.includes('.corrupt-')),false,'瞬时故障不该留损坏证据');
+ assert.equal(realRead.call(fs,file,'utf8'),good,'磁盘上的配置必须原样保留');
+});
+
 test('shutdown keeps waiting for a busy comment render until it actually completes',async()=>{
  const s=scheduler();s.post.busy=true;let finished=false;const original=Date.now;let now=original();Date.now=()=>now;
  const pending=s.shutdown().then(()=>finished=true);
