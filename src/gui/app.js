@@ -95,7 +95,10 @@ function fmtDur(ms) {
 // ---- 主表渲染 ----
 function render() {
   if (!state || !state.tasks) return;
-  $('diskInfo').textContent = `磁盘剩余 ${state.diskFreeGB} GB`;
+  // diskFreeGB 为 null 表示查询失败（不是 0），不要渲染成 "null GB"
+  $('diskInfo').textContent = state.diskFreeGB === null || state.diskFreeGB === undefined
+    ? '磁盘剩余 —'
+    : `磁盘剩余 ${state.diskFreeGB} GB`;
 
   const tb = document.createElement('tbody');
   $('empty').hidden = state.tasks.length > 0;

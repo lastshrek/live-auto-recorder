@@ -179,13 +179,11 @@ class Scheduler {
   }
 
   // 磁盘剩余字节数(outDir 所在盘)
+  // 查不到时返回 null —— 上层比较 null < minBytes 为 false，
+  // 等价于"跳过检查"。绝不能返回 0：那会被当成磁盘已满而拒绝录制，
+  // 且报错写的是"等待磁盘空间"，用户无从判断其实是查询失败。
   freeBytes(dir = this.outDir) {
-    try {
-      const st = fs.statfsSync(dir);
-      return st.bsize * st.bavail;
-    } catch {
-      return 0;
-    }
+    return require('../util/disk-free').freeBytes(dir);
   }
 
   get recordingCount() {
@@ -365,10 +363,18 @@ class Scheduler {
 
   _checkDisk() {
     const min = (this.cfg.settings.minFreeGB || 0) * 1024 ** 3;
+    // freeBytes 返回 null 表示"查不到"，此时 null < min 为 false，
+    // 自然不会把任务算进"空间不足"，等价于跳过检查。这是刻意的：
+    // 查不到空间不等于空间不够，不能因此停掉正在进行的录制。
     const recording = [...this.tasks.values()].filter((t) => t.state === 'recording' &&
       this.freeBytes(t.rec ? path.dirname(t.rec.base) : this.outDir) < min);
     if (!recording.length) return;
-    const free = Math.min(...recording.map((t) => this.freeBytes(t.rec ? path.dirname(t.rec.base) : this.outDir)));
+    // 取最小值时排除 null，否则 Math.min(null,...) 会把结果算成 0
+    const known = recording
+      .map((t) => this.freeBytes(t.rec ? path.dirname(t.rec.base) : this.outDir))
+      .filter((n) => typeof n === 'number' && Number.isFinite(n));
+    if (!known.length) return;
+    const free = Math.min(...known);
     log.error(`[disk] 剩余空间不足(${(free / 1024 ** 3).toFixed(1)}GB < ${this.cfg.settings.minFreeGB}GB), 停止全部录制`);
     this.onEvent && this.onEvent('diskfull', { freeGB: +(free / 1024 ** 3).toFixed(1) });
     for (const t of recording) this._stopJob(t, '磁盘空间不足').catch((e) => log.error('[disk] stop错误', e.message));
@@ -774,7 +780,8 @@ class Scheduler {
       })),
       history,
       post,
-      diskFreeGB: +(this.freeBytes() / 1024 ** 3).toFixed(1),
+      // 查不到时给 null 而不是 NaN：界面据此显示"—"，避免把失败渲染成 0.0GB
+      diskFreeGB: (() => { const n = this.freeBytes(); return n === null ? null : +(n / 1024 ** 3).toFixed(1); })(),
       settings: this.cfg.settings,
       companies: this.cfg.companies || [],
       ungroupedCollapsed: !!this.cfg.ungroupedCollapsed,

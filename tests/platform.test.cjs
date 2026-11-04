@@ -151,3 +151,49 @@ test('即使 ntsuspend 不可用，模块本身仍能正常加载', () => {
     delete require.cache[require.resolve(p)];
   }
 });
+
+// ---- 磁盘空间查询的 null 语义 ----
+// 背景：早先 freeBytes 失败时返回 0。上层判断是 `free < minFreeGB`，
+// 0 会被当成"磁盘已满"，直接拒绝开始录制，而且错误文案写的是
+// "等待磁盘空间" —— 用户完全猜不到其实是查询失败。
+// 现在改为返回 null，语义是"查不到，跳过检查"。
+
+test('freeBytes 查不到时返回 null 而不是 0', () => {
+  const { freeBytes } = require('../src/util/disk-free');
+  assert.equal(freeBytes('/nonexistent/definitely/not/here'), null,
+    '不能返回 0：0 会被上层当成磁盘已满');
+});
+
+test('freeBytes 在正常目录上返回正数', () => {
+  const { freeBytes } = require('../src/util/disk-free');
+  const n = freeBytes(process.cwd());
+  assert.ok(typeof n === 'number' && n > 0, `应返回正数字节数，实际 ${n}`);
+});
+
+test('assertSpace 在空间未知时放行，不误判为磁盘满', () => {
+  const { assertSpace } = require('../src/core/disk-space');
+  // 传一个必然失败的 available()，模拟"查不到"
+  assert.doesNotThrow(
+    () => assertSpace('/anywhere', 999 * 1024 ** 3, 0, '测试', () => null),
+    '空间未知时不应抛错，否则录制无法开始',
+  );
+});
+
+test('assertSpace 在确实空间不足时仍然抛错', () => {
+  const { assertSpace, DiskSpaceError } = require('../src/core/disk-space');
+  assert.throws(
+    () => assertSpace('/anywhere', 100 * 1024 ** 3, 0, '测试', () => 1024),
+    (e) => e.code === 'LR_DISK_SPACE',
+    '真的不足时必须拦住',
+  );
+});
+
+test('scheduler.freeBytes 与 disk-free 语义一致（null 透传）', () => {
+  const { Scheduler } = require('../src/core/scheduler');
+  const { load } = require('../src/core/store');
+  const s = new Scheduler(load());
+  // 正常目录应有值
+  assert.ok(typeof s.freeBytes(process.cwd()) === 'number');
+  // 不存在的目录应是 null，而不是 0
+  assert.equal(s.freeBytes('/nonexistent/xyz'), null);
+});
