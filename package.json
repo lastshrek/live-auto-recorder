@@ -10,7 +10,10 @@
     "test:ui": "electron tests/electron/ui-test.cjs",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac"
+    "dist:mac": "electron-builder --mac",
+    "transcribe:setup": "node scripts/setup-transcribe.cjs",
+    "transcribe:check": "node scripts/setup-transcribe.cjs --check",
+    "transcribe": "node scripts/transcribe-cli.cjs"
   },
   "keywords": [],
   "author": "",

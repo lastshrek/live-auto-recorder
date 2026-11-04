@@ -192,6 +192,99 @@ npm run dist:mac    # macOS dmg (x64 + arm64)
 - 支持导入个人主页链接：已识别房间号的直接秒级监控；离线导入则等首次开播识别，
   成功后永久转为房间号监控。重复房间自动合并为一个任务
 
+## 语音转文字（本地，完全离线）
+
+把录好的视频转成文字稿和字幕。**全程不联网**，音频不出本机——除了首次下载模型，运行时不产生任何网络请求。
+
+### 为什么是这个方案
+
+选型的关键不是「哪个最准」，而是「换台电脑还能不能跑」。调研过的选项及排除原因：
+
+| 方案 | 结论 |
+|---|---|
+| **sherpa-onnx + Qwen3-ASR** | ✅ 采用。Apache-2.0，有 Windows/macOS/Linux 全平台预编译包 |
+| 官方 `qwen-asr`（PyTorch） | ❌ 官方只支持 CUDA，Mac 和纯 CPU 属未支持状态 |
+| `qwen3-asr-rs`（Rust） | ❌ 无预编译二进制，必须装 Rust 工具链自行编译 |
+| SenseVoice（阿里开源） | ❌ 只支持中/英/粤/日/韩，**不覆盖北方官话细分口音**，会强行转成普通话 |
+| 云端 API（阿里百炼等） | ❌ 需上传录音，不接受 |
+
+**方言覆盖**：支持 31 种语言 + 22 种中文方言，覆盖东北、四川、河南、山东、陕西、山西、河北、安徽、湖北、湖南、江西、浙江、江苏、云南、贵州、甘肃、宁夏、福建等地方言，以及吴语、闽南语、粤语（香港/广东）。
+
+方言识别会**保留原词**，不会洗成普通话。实测粤语输出「揾到」「喺」「俾我哋」均保留原字。
+
+### 安装（Windows / macOS 通用）
+
+只要装好 Python 3.9+，其余一条命令：
+
+```bash
+npm run transcribe:setup      # 建独立 venv + 装依赖 + 下载模型（约 850MB，仅一次）
+npm run transcribe:check      # 随时体检，缺什么会明确说
+```
+
+国内网络若 pip 慢，先设镜像：
+
+```bash
+# macOS / Linux
+LR_PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple npm run transcribe:setup
+# Windows (PowerShell)
+$env:LR_PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"; npm run transcribe:setup
+```
+
+模型从 GitHub Release 下载。若直连失败，可挂代理，或手动下载后放到 `runtime/asr/models/`：
+
+```
+https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2
+```
+
+安装过程**不污染系统 Python**：所有依赖装在 `runtime/asr/venv/`，删掉整个 `runtime/` 即可完全卸载。
+
+### 使用
+
+```bash
+npm run transcribe -- "recordings/主播名/某场.mp4"        # 单个文件
+npm run transcribe -- recordings/主播名 --all             # 整个目录（递归）
+npm run transcribe -- 某场.mp4 --hotwords "商品名,主播名"  # 带热词，提升专名识别
+```
+
+产物与视频同目录：`某场.srt`（字幕）+ `某场.txt`（纯文本）。
+
+常用选项：
+
+| 选项 | 说明 |
+|---|---|
+| `--all` | 递归处理子目录 |
+| `--hotwords "词1,词2"` | 热词偏置，商品名/人名/口播术语建议填 |
+| `--threads N` | 线程数，默认 CPU 核数减一 |
+| `--max-speech N` | 单段最长秒数，默认 15 |
+| `--no-srt` / `--no-txt` | 只要其中一种输出 |
+| `--keep-audio` | 保留抽取的临时 wav，便于排查识别质量 |
+
+### 硬件与速度
+
+**纯 CPU 即可，不需要显卡。** 实测（Apple M4 Pro，4 线程，0.6B int8）：
+
+| 指标 | 数值 |
+|---|---|
+| 内存占用 | 约 1.9 GB |
+| 磁盘 | 模型 950 MB |
+| 识别速度 | **16–31 倍实时**（4 小时直播约 8–15 分钟转完） |
+| 模型加载 | 约 1.3 秒/次 |
+
+普通笔记本（4 核 8GB）也能跑，速度大约减半，仍在可接受范围。
+
+### 几个实现上的坑（改代码前必读）
+
+- **必须切片再识别**。Qwen3-ASR 单次可处理的 token 数受 `max_total_len` 限制。实测把 272 秒音频整段送入，会因音频占位符（3541 个）超出上限被截断，**输出为空**且只有一行告警。所以流程固定为「VAD 切成 ≤15 秒语音段 → 逐段识别」。
+- **必须分块喂 VAD**。`VoiceActivityDetector` 内部缓冲固定，一次性 `accept_waveform` 整段长音频会覆盖尚未取走的结果。代码按 512 采样点（32ms）逐块喂入。
+- **相邻短段要合并**。VAD 按静音切得很细，逐段识别会把一句话拆成多条字幕。`merge_short()` 在「间隔 ≤0.35 秒且合并后 ≤15 秒」时并起来。
+- **音频规格固定为 16kHz / 单声道 / 16-bit PCM**，由 ffmpeg 统一转好再交给 Python。这样 Python 侧不需要 soundfile/librosa，Windows 上少一类编译问题。
+
+### 限制
+
+- **0.6B 是精度与体积的折中**。1.7B 更准（WER 3.6% vs 5.2%），但 ONNX 版本需自行导出，且内存约 4.6 GB。当前选用 0.6B 是为了让普通机器也能跑。
+- **没有手动方言开关**。模型自动判别语种/方言，不能强制指定「这是方言」。若某场识别偏差大，优先试 `--hotwords` 补专名。
+- **不产出逐字时间戳**。时间戳精度到「句」（VAD 段边界），不是逐字对齐。
+
 ## 架构
 
 ```
@@ -213,12 +306,18 @@ src/
     orphan-process.js 结束本应用遗留的 ffmpeg（三条件匹配，不按名字批量杀）
     process-query.js  进程查询适配：Windows PowerShell/CIM，macOS/Linux ps
     process-control.js 进程挂起/恢复与降优先级
+    transcribe.js    本地转写编排：ffmpeg 抽音轨 + 调 Python 引擎 + 进度与错误
     flv-tail*.js     FLV 尾部结构检查（工作线程，避免阻塞主进程）
+  transcribe/
+    run_asr.py       转写引擎：sherpa-onnx + Qwen3-ASR，VAD 切片、热词、SRT 输出
   util/
     platform.js      平台能力表：各系统支持什么，供上层优雅降级
     recording-browser.js 录像目录浏览与播放（含路径越界防护）
     app-health.js    心跳、崩溃转储、watchdog 拉起
   gui/               仪表盘（原生 JS + CSS，无框架依赖）
+scripts/
+  setup-transcribe.cjs  转写环境一键准备（三平台通用，独立 venv）
+  transcribe-cli.cjs    转写命令行（单文件/整目录批量）
 ```
 
 ## 测试
