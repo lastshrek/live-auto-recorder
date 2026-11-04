@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('api', {
   openRecordingsSystem: (relative) => ipcRenderer.invoke('recordings:system-open',relative),
   copyRecordingsPath: (relative) => ipcRenderer.invoke('recordings:copy',relative),
   playRecording: (relative) => ipcRenderer.invoke('recordings:play',relative),
+  transcribe: (relative) => ipcRenderer.invoke('transcribe:start', relative),
+  transcribeState: () => ipcRenderer.invoke('transcribe:state'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   batchAdd: (text) => ipcRenderer.invoke('streamer:batch', text),
   exportList: () => ipcRenderer.invoke('streamer:export'),

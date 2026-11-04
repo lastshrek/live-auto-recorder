@@ -476,6 +476,7 @@ function openDrawer() {
   $('setPostQuietStart').value=s.postQuietStart||'23:00';
   $('setPostQuietEnd').value=s.postQuietEnd||'08:00';
   $('setNoSleep').checked = !!s.preventSleep;
+  $('setAutoTranscribe').checked = !!s.autoTranscribe;
   $('setAutoStart').checked = !!s.autoStart;
   $('setWebhook').value = s.webhookUrl || '';
   backdrop.hidden = false;
@@ -511,6 +512,7 @@ $('btnSaveSettings').onclick = safe(async () => {
       postQuietStart: $('setPostQuietStart').value,
       postQuietEnd: $('setPostQuietEnd').value,
       preventSleep: $('setNoSleep').checked,
+      autoTranscribe: $('setAutoTranscribe').checked,
       autoStart: $('setAutoStart').checked,
       webhookUrl: $('setWebhook').value.trim(),
     });
@@ -575,6 +577,20 @@ async function browseRecordings(relative, initial = false) {
           try{await buttonAction(e.currentTarget,'play:'+entry.relative,()=>window.api.playRecording(entry.relative),'打开中…');$('recordingsStatus').textContent='已请求播放器打开视频';}
           catch(error){$('recordingsStatus').textContent=error.message;}
         },'recordingEntry');row.appendChild(button);
+
+        // 视频额外提供「转字幕」：只对可播放的视频文件显示，目录不显示
+        if(!entry.directory&&entry.playable){
+          const tbtn=document.createElement('button');tbtn.className='mini';tbtn.textContent='转字幕';
+          tbtn.onclick=safe(async e=>{
+            const btn=e.currentTarget;
+            try{
+              const r=await buttonAction(btn,'transcribe:'+entry.relative,()=>window.api.transcribe(entry.relative),'排队中…');
+              if(r&&r.ok===false)throw new Error(r.error||'无法开始转写');
+              $('recordingsStatus').textContent='已加入转写队列，完成后在同目录生成 .srt 与 .txt';
+            }catch(error){$('recordingsStatus').textContent='转写失败：'+error.message;}
+          },'transcribeEntry');
+          row.appendChild(tbtn);
+        }
       }
       $('recordingsEntries').appendChild(row);
     }

@@ -405,6 +405,23 @@ if (!app.requestSingleInstanceLock()) {
   H('recordings:copy',async(_e,relative)=>{const {target}=await recordingPath(sched.outDir,relative);clipboard.writeText(target);return {ok:true,path:target};});
   H('recordings:play',(_e,relative)=>openRecording(sched.outDir,relative,shell));
 
+  // 手动转写字幕。relative 走 recordingPath 校验，防止越权访问录像目录外的文件。
+  H('transcribe:start', async (_e, relative) => {
+    try {
+      const { target } = await recordingPath(sched.outDir, relative);
+      // 环境没装就不要入队，直接给可操作的提示（否则会在队列里失败，用户不知道原因）
+      const { isReady } = require('./core/transcribe-runtime');
+      if (!isReady()) return { ok: false, error: '转写环境未安装，请先运行 npm run transcribe:setup' };
+      const item = sched.transcribeNow(target, path.basename(path.dirname(target)));
+      if (!item) return { ok: false, error: '该文件已在转写队列中' };
+      pushState();
+      return { ok: true, id: item.id };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+  H('transcribe:state', () => ({ ok: true, ready: require('./core/transcribe-runtime').isReady(), ...sched.transcriber.snapshot() }));
+
   H('settings:update', (_e, patch) => {
     if (patch && typeof patch.webhookUrl === 'string' && !webhookUrlSafe(patch.webhookUrl) && patch.webhookUrl) {
       return { ok: false, error: 'Webhook 地址无效(仅支持公网 http/https)' };

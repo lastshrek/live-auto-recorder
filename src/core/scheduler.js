@@ -15,6 +15,7 @@ const {reconcileHistory}=require('./history-reconcile');
 const {writeJson}=require('../util/atomic-json');
 const {RecoveryController}=require('./recovery');
 const {NetworkBackoff}=require('./network-backoff');
+const {TranscribeQueue, pickTranscribableFiles}=require('./transcribe-queue');
 
 // 分段参数解析(对齐 biliLive-tools): "90"=90分钟, "500MB"=按500MB大小分段, "0"=不分段
 function parseSegment(v) {
@@ -39,6 +40,19 @@ class Scheduler {
     fs.mkdirSync(this.outDir, { recursive: true });
     this.post = new PostProcessor(cfg.settings);
     this.post.onUpdate = () => this.onEvent && this.onEvent('post', this.post.status);
+    // 自动转写队列。与 post 分开是因为转写耗时长(小时级)，塞进收尾队列
+    // 会让界面上的"正在收尾"卡住几分钟，看起来像卡死。
+    this.transcriber = new TranscribeQueue({
+      run: (file, item) => this._runTranscribe(file, item),
+      // 有录制在进行时让路，避免与直拷/转封装抢 CPU
+      isBusy: () => this.recordingCount > 0,
+      onUpdate: () => this.onEvent && this.onEvent('transcribe', this.transcriber.snapshot()),
+    });
+    // 收尾成功后按需触发转写。
+    // 注意：post.onResult 已被 recovery 占用（用于释放准入名额），这里必须
+    // 用包装而不是直接赋值，否则会把恢复队列的释放逻辑覆盖掉，导致
+    // 后续任务永远进不了队。曾差点踩这个坑。
+    this._postOnResultHooked = false;
     this.onEvent = null; // 由 main 注入: (type, data) => void
     // 全局请求闸门: 所有轮询请求串行 + 最小间隔(防大量房间时聚合请求过猛触发风控)
     this._gateLast = 0;
@@ -62,6 +76,43 @@ class Scheduler {
     if(relocated){try{writeJson(this.historyFile,this.history,{backup:true});}catch(e){log.warn('[history] 分类索引保存失败:',e.message);}}
     this._syncHistoryWithDisk();
     this.recovery=new RecoveryController(this,path.join(ROOT,'recording-jobs.json'));
+    this._hookTranscribe();
+  }
+
+  /**
+   * 在 post.onResult 上叠加一层，收尾成功后按需触发转写。
+   *
+   * 为什么必须包装：recovery 已经占用了这个回调来释放准入名额。
+   * 直接 newPost.onResult = fn 会把那段逻辑冲掉，后果是恢复队列不再
+   * 释放，后续任务永远排不进去 —— 而且是静默的，很难查。
+   */
+  _hookTranscribe() {
+    if (this._postOnResultHooked) return;
+    const prev = this.post.onResult;
+    this.post.onResult = (job, error, result) => {
+      // 先跑原有逻辑，保证准入释放不因转写出任何问题而漏掉
+      if (typeof prev === 'function') prev(job, error, result);
+      if (error) return;                    // 收尾失败就不必转写了
+      if (result && result.skipped) return; // 内容不合格（太小/损坏）也不要字幕
+      if (!this.cfg.settings.autoTranscribe) return;
+      try {
+        const files = pickTranscribableFiles(job.recorder?.files || []);
+        for (const f of files) {
+          this.transcriber.enqueue(f, { nickname: job.nickname || '' });
+        }
+      } catch (e) {
+        // 转写排队的异常绝不能影响录像状态；录像已经落盘了
+        log.warn('[transcribe] 自动转写入队失败:', e.message);
+      }
+    };
+    this._postOnResultHooked = true;
+  }
+
+  /** 供 GUI 手动触发一次转写（也可对历史里的旧文件用） */
+  transcribeNow(file, nickname = '') {
+    if (!file) throw new Error('请指定要转写的文件');
+    if (!fs.existsSync(file)) throw new Error('文件不存在');
+    return this.transcriber.enqueue(file, { nickname, reason: 'manual' });
   }
 
   // 全局限速(自适应): 目标让全部房间一轮耗时 ≈ pollIntervalSec。
@@ -139,6 +190,41 @@ class Scheduler {
 
   get recordingCount() {
     return [...this.tasks.values()].filter((t) => t.state === 'recording').length;
+  }
+
+  /**
+   * 执行一次转写。环境缺失时抛错，由队列记为 failed，不影响录像状态。
+   *
+   * 环境检查放在这里而不是入队时：入队发生在收尾链路里，那里不能因为
+   * 缺 Python 就抛异常打断收尾；等真正要转时再报错，报错也只影响字幕。
+   */
+  async _runTranscribe(file, item) {
+    const { loadRuntimeConfig } = require('./transcribe-runtime');
+    const rt = loadRuntimeConfig();
+    if (!rt) {
+      const e = new Error('转写环境未安装，请先运行 npm run transcribe:setup');
+      e.code = 'LR_ASR_NOT_READY';
+      throw e;
+    }
+    const { transcribeFile } = require('./transcribe');
+    const { autoHotwords } = require('./hotwords');
+    // 热词由文件名里的主播名推导，与 CLI 走同一套规则
+    let history = null;
+    try { history = this.history; } catch { /* 历史不可用只是热词少几个 */ }
+    const hotwords = autoHotwords({ inputPath: file, history, nickname: item.nickname });
+    return transcribeFile(file, {
+      venvDir: rt.venvDir,
+      modelDir: rt.modelDir,
+      vadModel: rt.vadModel,
+      hotwords,
+      srtPath: file.replace(/\.[^.]+$/, '.srt'),
+      txtPath: file.replace(/\.[^.]+$/, '.txt'),
+    });
+  }
+
+  /** 判断某个文件是否值得转写（供 GUI 与自动触发共用） */
+  static transcribable(files) {
+    return pickTranscribableFiles(files);
   }
 
   start() {
@@ -717,6 +803,7 @@ class Scheduler {
     if (Number.isFinite(+patch.minSizeMB)) s.minSizeMB = Math.min(100000, Math.max(0, +patch.minSizeMB));
     if (typeof patch.autoPartMerge === 'boolean') s.autoPartMerge = patch.autoPartMerge;
     if (typeof patch.preventSleep === 'boolean') s.preventSleep = patch.preventSleep;
+    if (typeof patch.autoTranscribe === 'boolean') s.autoTranscribe = patch.autoTranscribe;
     if (Number.isFinite(+patch.postConcurrency)) s.postConcurrency = Math.min(4, Math.max(1, Math.round(+patch.postConcurrency)));
     if (typeof patch.outputDir === 'string') {
       const od = patch.outputDir.trim().slice(0, 200).replace(/^[-\s]+/, '');

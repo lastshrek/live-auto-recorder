@@ -135,6 +135,8 @@
     <label>每天静音结束 <input id="setPostQuietEnd" type="time" step="60" /></label>
     <p class="hint">按电脑本地时间，可跨午夜。时段内不启动新的修复、合并或拆分任务；已开始的任务完整跑完。录制继续，结束后自动处理排队任务。</p>
     <label class="check"><input id="setNoSleep" type="checkbox" /> 录制期间阻止系统休眠</label>
+    <label class="check"><input id="setAutoTranscribe" type="checkbox" /> 录完自动转字幕（本地离线，占 CPU）</label>
+    <p class="hint">转字幕在本机离线运行，音频不出网。耗时约为录像时长的 1/8～1/15（4 小时约 8-15 分钟）。有录制在进行时会自动让路，转写失败不影响录像。</p>
     <label class="check"><input id="setAutoStart" type="checkbox" /> 开机自动启动</label>
     <label>Webhook 通知 <input id="setWebhook" type="text" placeholder="https://公网地址/钩子 (开播/录完时POST)" /></label>
     <p class="hint">存储预估：原画约 2-4 GB/小时·路；建议开启保留天数清理</p>

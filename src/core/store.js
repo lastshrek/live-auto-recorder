@@ -29,6 +29,7 @@ const DEFAULT = {
     postQuietEnabled: false,
     postQuietStart: '23:00',
     postQuietEnd: '08:00',
+    autoTranscribe: false, // 录完自动转字幕(默认关：转写吃 CPU，不能悄悄替用户开)
   },
 };
 
