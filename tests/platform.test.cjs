@@ -197,3 +197,34 @@ test('scheduler.freeBytes 与 disk-free 语义一致（null 透传）', () => {
   // 不存在的目录应是 null，而不是 0
   assert.equal(s.freeBytes('/nonexistent/xyz'), null);
 });
+
+// ---- 转写安装脚本的健壮性 ----
+// 实测发现两个问题，都用测试锁住：
+// 1) 装完只检查 pip 退出码，没有验证能否真的 import。pip 返回 0 但
+//    模块导入失败（ABI 不匹配、源码编译静默失败）时，用户要到点
+//    「转字幕」才发现。
+// 2) --check 把 os.freemem() 标成"磁盘可用"，会让人误以为磁盘快满了。
+
+test('安装脚本在装完依赖后验证能否真的 import', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'setup-transcribe.cjs'), 'utf8');
+  assert.ok(/import sherpa_onnx, numpy/.test(src), '应实际执行一次 import 验证');
+  assert.ok(/无法导入/.test(src), '导入失败时应有明确报错');
+});
+
+test('--check 区分内存与磁盘，不把内存标成磁盘', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'setup-transcribe.cjs'), 'utf8');
+  assert.ok(!/磁盘可用: \$\{Math\.round\(os\.freemem/.test(src),
+    '不应再用 freemem 冒充磁盘空间');
+  assert.ok(/内存: 空闲/.test(src), '应单独显示内存');
+  assert.ok(/磁盘\(/.test(src), '应单独显示磁盘');
+});
+
+test('安装失败提示包含 Python 版本建议与镜像地址', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'setup-transcribe.cjs'), 'utf8');
+  // 失败信息必须可操作：要么换镜像，要么换 Python 版本
+  assert.ok(/LR_PIP_INDEX/.test(src), '应提示镜像用法');
+  assert.ok(/3\.10~3\.13|Python 3\.1/.test(src), '应提示可用的 Python 版本区间');
+});

@@ -149,7 +149,17 @@ function doctor() {
     const v = capture(venvPython(), ['-c', 'import sherpa_onnx;print(sherpa_onnx.__version__)']);
     if (v.ok) log(`版本: ${v.out.trim()}`);
   }
-  log(`磁盘可用: ${Math.round(os.freemem() / 1024 / 1024 / 1024)} GB 内存 / ${os.cpus().length} 核`);
+  // 这里曾把 os.freemem() 标成"磁盘可用"，会让用户误以为磁盘快满了。
+  // 分开显示：转写的瓶颈是内存(模型约 2GB)，磁盘只在下载时需要。
+  const freeMemGB = Math.round(os.freemem() / 1024 / 1024 / 1024 * 10) / 10;
+  const { freeBytes } = require('../src/util/disk-free');
+  const disk = freeBytes(RUNTIME);
+  const diskText = disk === null ? '未知' : `${Math.round(disk / 1024 / 1024 / 1024)} GB 可用`;
+  log(`内存: 空闲 ${freeMemGB} GB / CPU ${os.cpus().length} 核`);
+  log(`磁盘(${path.basename(RUNTIME)}): ${diskText}`);
+  if (freeMemGB < 2) {
+    log('  提示：内存偏紧。转写 0.6B 模型约需 1.9GB，建议关闭其他程序。');
+  }
   return st;
 }
 
@@ -205,10 +215,23 @@ function main() {
     const installArgs = ['-m', 'pip', 'install', '-q', 'sherpa-onnx', 'numpy'];
     if (index) installArgs.push('-i', index);
     if (!run(venvPython(), installArgs)) {
-      fail('安装 sherpa-onnx 失败。国内网络可设置镜像后重试：\n'
-        + '  macOS/Linux: LR_PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple node scripts/setup-transcribe.cjs\n'
-        + '  Windows:     set LR_PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple && node scripts/setup-transcribe.cjs');
+      fail('安装 sherpa-onnx 失败。常见原因与处理：\n'
+        + '  1) 网络慢 → 换国内镜像：\n'
+        + '     macOS/Linux: LR_PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple node scripts/setup-transcribe.cjs\n'
+        + '     Windows:     set LR_PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple && node scripts/setup-transcribe.cjs\n'
+        + '  2) Python 版本没有对应 wheel → 换 Python 3.10~3.13（官方对这些版本都有预编译包）');
     }
+
+    // pip 成功不等于能用：可能是源码编译失败但 pip 仍返回 0，
+    // 或者装上的 numpy 与 sherpa-onnx 的 ABI 不匹配。装完立即验证一次，
+    // 免得用户到点「转字幕」时才发现。
+    const verify = capture(venvPython(), ['-c', 'import sherpa_onnx, numpy; print(sherpa_onnx.__version__, numpy.__version__)']);
+    if (!verify.ok) {
+      fail('依赖已安装但无法导入，请把下面的信息反馈：\n'
+        + `  Python: ${capture(venvPython(), ['--version']).out.trim()}\n`
+        + `  错误: ${String(verify.out).trim().split('\n').slice(-3).join(' ')}`);
+    }
+    log(`  sherpa-onnx ${verify.out.trim().split(' ')[0]} / numpy ${verify.out.trim().split(' ')[1] || '?'} 导入正常`);
   } else {
     log('[3/4] sherpa-onnx 已安装，跳过');
   }
