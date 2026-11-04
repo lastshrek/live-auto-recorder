@@ -1,5 +1,24 @@
 # Windows 接入指南
 
+## 一句话安装（直接粘给智能体）
+
+```
+帮我安装 https://github.com/lastshrek/live-auto-recorder 这个项目：
+先克隆仓库，然后运行 npm run install:win 完成安装，装完告诉我怎么启动。
+如果失败，按仓库里的 Windows接入指南.md 排查。
+```
+
+智能体会自动完成：检查 Node 版本 → 配置国内镜像 → 安装依赖 →
+验证关键文件 → 自检 → 告诉你启动方式。全程无需你操作。
+
+**前提**：电脑已装 Node.js 22.12+。没有的话先执行：
+
+```
+帮我装 Node.js LTS 版，用 winget install OpenJS.NodeJS.LTS
+```
+
+---
+
 面向：**把本指南整份粘给 AI 智能体，由它代为安装配置**；也可人工照做。
 
 > 给智能体的说明：本文档中的命令与配置项均与代码一致，可直接执行。
@@ -68,7 +87,16 @@ $env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
 npm config set registry https://registry.npmmirror.com
 ```
 
-### 2.3 安装依赖
+### 2.3 一键安装（推荐）
+
+```powershell
+npm run install:win
+```
+
+这一条命令覆盖了 2.2 到 2.4 的全部内容，并且带验证。下面是手动方式的说明，
+供排查问题时参考。
+
+### 2.3.1 手动安装依赖
 
 ```powershell
 npm install
@@ -343,15 +371,24 @@ npm install --force
 
 按顺序执行，每步验证通过再进下一步：
 
+**优先走一键脚本**（它已包含版本检查、镜像配置、依赖安装与验证）：
+
 ```
-[ ] 1. node -v               → 主版本 >= 22 且次版本满足 22.12
-[ ] 2. git clone <仓库地址>   → 目录存在
-[ ] 3. 设置 ELECTRON_MIRROR 与 npm registry 镜像
-[ ] 4. npm install           → 退出码 0
-[ ] 5. 验证 electron.exe 与 ffmpeg.exe 均存在
-[ ] 6. npm start             → 出现「直播自动录制」窗口
-[ ] 7.（可选）python --version → 3.9+，然后 npm run transcribe:setup
-[ ] 8.（可选）npm run transcribe:check → 输出「环境就绪」
+[ ] 1. node -v                → >= 22.12，不满足则先装 Node
+[ ] 2. git clone <仓库地址>
+[ ] 3. npm run install:win    → 退出码 0，末尾显示「启动方式」
+[ ] 4. npm start              → 出现「直播自动录制」窗口
+[ ] 5.（可选）npm run transcribe:setup  → 需要字幕时
+```
+
+脚本内部的 5 个阶段（出问题时按此定位）：
+
+```
+[1/5] 检查 Node.js 版本      → 低于 22.12 会直接退出并给出升级命令
+[2/5] 安装项目依赖            → 自动用国内镜像下 Electron 与 ffmpeg
+[3/5] 验证关键文件            → electron.exe / ffmpeg.exe 必须存在
+[4/5] 准备配置文件            → 检查录像目录可写
+[5/5] 运行自检                → 字幕环境（可选）+ 主进程代码完整性
 ```
 
 **任一步失败时的处理原则**：

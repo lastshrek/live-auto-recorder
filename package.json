@@ -13,7 +13,8 @@
     "dist:mac": "electron-builder --mac",
     "transcribe:setup": "node scripts/setup-transcribe.cjs",
     "transcribe:check": "node scripts/setup-transcribe.cjs --check",
-    "transcribe": "node scripts/transcribe-cli.cjs"
+    "transcribe": "node scripts/transcribe-cli.cjs",
+    "install:win": "node scripts/install-windows.cjs"
   },
   "keywords": [],
   "author": "",
