@@ -1,28 +1,53 @@
 # Windows 接入指南
 
-## 一句话安装（直接粘给智能体）
+## 一句话安装（电脑上什么都没有也能用）
+
+把下面这句话整段复制给你的 AI 智能体：
 
 ```
-帮我安装 https://github.com/lastshrek/live-auto-recorder 这个项目：
-先克隆仓库，然后运行 npm run install:win 完成安装，装完告诉我怎么启动。
-如果失败，按仓库里的 Windows接入指南.md 排查。
+帮我安装这个项目：打开 PowerShell 执行
+irm https://raw.githubusercontent.com/lastshrek/live-auto-recorder/master/install.ps1 | iex
+它会自动装好 Node.js 和项目本身，装完告诉我怎么启动。
 ```
 
-智能体会自动完成：检查 Node 版本 → 配置国内镜像 → 安装依赖 →
-验证关键文件 → 自检 → 告诉你启动方式。全程无需你操作。
+**不需要预先安装任何东西。** 这条命令会自动完成：
 
-**前提**：电脑已装 Node.js 22.12+。没有的话先执行：
+| 步骤 | 做什么 |
+|---|---|
+| 1 | 检查 Node.js，没有就自动下载官方 MSI 并静默安装 |
+| 2 | 下载项目代码（zip，**不需要 git**） |
+| 3 | 安装依赖（自动走国内镜像，约 300MB） |
+| 4 | 自检并打印启动方式 |
 
+全程约 5–10 分钟，取决于网速。装完后脚本会问你要不要立刻启动。
+
+### 如果智能体不能执行命令
+
+那就在自己电脑上操作，同样一句话：
+
+1. 按 `Win + X`，选「Windows PowerShell」或「终端」
+2. 粘贴下面这行，回车：
+
+```powershell
+irm https://raw.githubusercontent.com/lastshrek/live-auto-recorder/master/install.ps1 | iex
 ```
-帮我装 Node.js LTS 版，用 winget install OpenJS.NodeJS.LTS
+
+### 这个脚本为什么能在"零环境"上跑
+
+Windows 10/11 自带：PowerShell 5.1、msiexec（装 MSI）、.NET WebClient（下载）、
+Expand-Archive（解压）。脚本只用这些，不依赖 git、Python 或任何第三方工具。
+
+装好后项目会放在 `%USERPROFILE%\live-auto-recorder`。
+
+### 安装位置可以改
+
+默认 `%USERPROFILE%\live-auto-recorder`。想换位置就先手动下脚本再执行：
+
+```powershell
+# 改这两行里的路径即可
+$env:LR_INSTALL_DIR = "D:\live-auto-recorder"
+irm https://raw.githubusercontent.com/lastshrek/live-auto-recorder/master/install.ps1 | iex
 ```
-
----
-
-面向：**把本指南整份粘给 AI 智能体，由它代为安装配置**；也可人工照做。
-
-> 给智能体的说明：本文档中的命令与配置项均与代码一致，可直接执行。
-> 遇到失败请按「故障排查」章节逐项核对，不要猜测参数。
 
 ---
 
