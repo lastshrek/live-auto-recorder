@@ -160,3 +160,68 @@ test('CLI 无参数时输出用法提示', () => {
   assert.match(r.stdout, /用法/);
   assert.match(r.stdout, /transcribe-cli/);
 });
+// ---- 自动热词 ----
+// 背景：实测发现热词能让专名一致（同一人物名从三种写法统一成一种），但热词过多或含标点会让模型把热词串当正文吐出。以下测试锁住
+// 这两条经验，避免以后有人"优化"成一次塞几十个词。
+
+test('从直播文件名只取主播名，不取标题与日期时间', () => {
+  const { wordsFromFilename } = require('../src/core/hotwords');
+  const w = wordsFromFilename('recordings/主播A_123456/2026-11-03_某某说手机（别名甲）_20-15-33_一段很长的直播标题…！_纯享版.mp4');
+  assert.ok(w.includes('某某说手机（别名甲）'), '应保留主播全名');
+  assert.ok(w.includes('别名甲'), '括号内别名也应保留，口播里常说别名');
+  // 日期、时间、标题句、"纯享版" 都不得混入
+  assert.ok(!w.some(x => /^\d{4}-\d{2}-\d{2}$/.test(x)), '不应含日期');
+  assert.ok(!w.some(x => /^\d{2}-\d{2}-\d{2}$/.test(x)), '不应含时间');
+  assert.ok(!w.includes('纯享版'));
+  assert.ok(!w.some(x => x.includes('，')), '标题句不应被拆成热词');
+});
+
+test('热词过滤掉标点、话题标签与过长短语', () => {
+  const { worthKeeping } = require('../src/core/hotwords');
+  // 该保留的：短专名
+  for (const w of ['张三丰', '某某主播', '一段标题词', 'Mate70Pro']) {
+    assert.equal(worthKeeping(w), true, `${w} 应保留`);
+  }
+  // 该丢弃的：这些曾导致模型复述热词串或输出垃圾
+  for (const w of ['#话题标签', '多久下架，就看造化啦', '1分钟集锦。', 'test', '题目']) {
+    assert.equal(worthKeeping(w), false, `${w} 应丢弃`);
+  }
+  // 括号不算标点：主播别名常用括号，误拒会导致整个主播名丢失
+  assert.equal(worthKeeping('某某说手机（别名甲）'), true, '带括号的主播名应保留');
+  // 但成句的标题（含逗号/问号）必须拒掉，否则会挤占 prompt
+  assert.equal(worthKeeping('多久下架，就看造化啦'), false, '含逗号的句子应丢弃');
+});
+
+test('自动热词数量受限，且不含噪音', () => {
+  const { autoHotwords } = require('../src/core/hotwords');
+  const hw = autoHotwords({
+    inputPath: 'recordings/x/2026-11-03_主播名_20-15-33_标题_纯享版.mp4',
+    history: [
+      { nickname: '主播名', title: '一段很长的标题，不该变成热词' },
+      { nickname: '另一个主播', title: '同样不该' },
+    ],
+  });
+  const words = hw ? hw.split(',') : [];
+  assert.ok(words.length <= 4, `热词不应超过 4 个，实际 ${words.length}: ${hw}`);
+  assert.ok(words.includes('主播名'), '应含当前主播名');
+  assert.ok(!words.includes('纯享版'));
+  assert.ok(!words.some(w => w.includes('，')), '不应含标点');
+});
+
+test('普通文件名不产生热词（避免无中生有干扰识别）', () => {
+  const { autoHotwords } = require('../src/core/hotwords');
+  assert.equal(autoHotwords({ inputPath: '/tmp/test.mp4' }), '');
+  assert.equal(autoHotwords({ inputPath: '/tmp/2026-11-03_20-15-33.mp4' }), '');
+  assert.equal(autoHotwords({ inputPath: '/tmp/video.mp4' }), '');
+});
+
+test('历史记录按房间过滤，不把其他主播名混进来', () => {
+  const { wordsFromHistory } = require('../src/core/hotwords');
+  const hist = [
+    { roomId: '111', nickname: '主播甲' },
+    { roomId: '222', nickname: '主播乙' },
+  ];
+  const w = wordsFromHistory(hist, { roomId: '111' });
+  assert.ok(w.includes('主播甲'));
+  assert.ok(!w.includes('主播乙'), '不应混入其他房间的主播名');
+});

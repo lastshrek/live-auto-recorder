@@ -14,6 +14,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { transcribeFile, findPython, diagnose } = require('../src/core/transcribe');
+const { autoHotwords } = require('../src/core/hotwords');
 const { loadConfig, VENV } = require('./setup-transcribe.cjs');
 
 const VIDEO_EXT = /\.(mp4|mkv|flv|mov|webm|ts|m4v|avi|wav|mp3|m4a|aac|flac)$/i;
@@ -27,6 +28,7 @@ function parseArgs(argv) {
     else if (a === '--no-srt') out.srt = false;
     else if (a === '--no-txt') out.txt = false;
     else if (a === '--hotwords') out.hotwords = argv[++i] || '';
+    else if (a === '--no-auto-hotwords') out.noAutoHotwords = true;
     else if (a === '--threads') out.threads = Number(argv[++i]) || 0;
     else if (a === '--max-speech') out.maxSpeech = Number(argv[++i]) || 15;
     else if (a.startsWith('--')) { console.error(`未知选项: ${a}`); process.exit(2); }
@@ -108,6 +110,16 @@ async function main() {
   }
 
   console.log(`待处理 ${files.length} 个文件\n`);
+
+  // 历史记录只读一次，用于自动补热词（主播名/标题里的专名）
+  let history = null;
+  if (!args.hotwords && !args.noAutoHotwords) {
+    try {
+      const hf = path.join(process.cwd(), 'history.json');
+      if (fs.existsSync(hf)) history = JSON.parse(fs.readFileSync(hf, 'utf8'));
+    } catch { /* 历史读不到不影响转写，只是热词少了几个 */ }
+  }
+
   const summary = [];
   const started = Date.now();
 
@@ -115,6 +127,11 @@ async function main() {
     const file = files[i];
     const base = file.replace(/\.[^.]+$/, '');
     const st = fs.statSync(file);
+
+    // 用户显式给了就用用户的；否则从文件名 + 历史自动推导
+    const hotwords = args.hotwords
+      || (args.noAutoHotwords ? '' : autoHotwords({ inputPath: file, history }));
+
     process.stdout.write(`[${i + 1}/${files.length}] ${path.basename(file)} (${fmtSize(st.size)}) `);
 
     const t0 = Date.now();
@@ -123,7 +140,7 @@ async function main() {
         venvDir: VENV,
         modelDir: cfg.modelDir,
         vadModel: cfg.vadModel,
-        hotwords: args.hotwords,
+        hotwords,
         threads: args.threads || undefined,
         maxSpeech: args.maxSpeech || 15,
         srtPath: args.srt ? `${base}.srt` : undefined,
