@@ -334,6 +334,49 @@ npm run transcribe -- "录像.mp4" --hotwords "商品名,人名"
 
 ## 8. 故障排查
 
+### 一键安装：提示「在此系统上禁止运行脚本」
+
+PowerShell 默认的执行策略会拦截脚本。用这行命令绕过（只影响当前进程）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/lastshrek/live-auto-recorder/master/install.ps1 | iex"
+```
+
+若提示「无法识别 irm」，说明 PowerShell 版本过旧，改用完整写法：
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://raw.githubusercontent.com/lastshrek/live-auto-recorder/master/install.ps1 | Invoke-Expression"
+```
+
+### 一键安装：卡在「正在安装 Node.js」
+
+`msiexec` 静默安装偶尔会被系统策略或安全软件拦截，表现为长时间无反应。
+
+处理办法：**手动装 Node.js 后重跑同一条命令**。脚本是幂等的，检测到已装好会跳过这一步。
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+装完**关掉 PowerShell 重开**再执行一次安装命令。若 `winget` 也没有，
+到 https://nodejs.org/ 下载 LTS 的 `.msi` 手动安装，安装时保持默认选项。
+
+### 一键安装：Node 装好了但仍提示版本过低
+
+MSI 安装后当前会话的 PATH 不会立刻刷新。脚本会自动从注册表重新读取，
+但极少数情况下仍取不到。此时**关闭 PowerShell 窗口重新打开**，再跑一次即可。
+
+### 一键安装：下载项目代码失败
+
+GitHub 在国内可能无法直连。两个办法：
+
+1. 挂代理后重试
+2. 用浏览器打开下面地址下载 zip，解压到 `%USERPROFILE%\live-auto-recorder`
+   ```
+   https://github.com/lastshrek/live-auto-recorder/archive/refs/heads/master.zip
+   ```
+   然后在该目录下执行 `npm run install:win`
+
 ### npm install 报 Electron 下载失败
 
 ```powershell
