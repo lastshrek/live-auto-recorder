@@ -38,13 +38,69 @@ Windows / macOS 双平台。**核心录制链路在两端完全一致**，只有
 
 ## 快速开始
 
+**下载项目后不能直接双击运行，必须先 `npm install`。** 因为仓库里不包含
+`node_modules`（93 个源文件，约 1MB），ffmpeg 和 Electron 运行时都是
+安装时按平台下载的。
+
+前提：装 [Node.js](https://nodejs.org/) 18+（Windows 选 LTS 版即可）。
+
 ```bash
-npm install
+npm install     # 下载依赖 + 对应平台的 ffmpeg / Electron（约 300MB）
+npm start       # 或双击启动器
+```
+
+### Windows 特别注意
+
+`npm install` 要下载三个东西，全部走 GitHub Release，**国内直连会失败**：
+
+| 组件 | 用途 | 未装上的后果 |
+|---|---|---|
+| Electron | 应用运行时 | **无法启动**（致命） |
+| ffmpeg-static | 录制核心 | **无法录制**（致命） |
+| ntsuspend | 单任务暂停 | 仅「暂停后处理任务」不可用，其余正常 |
+
+所以国内网络下建议先设镜像再装：
+
+```powershell
+# PowerShell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+npm install --registry=https://registry.npmmirror.com
+```
+
+如果 `npm install` 报 `ffmpeg-static` 下载失败，可挂代理重试，或手动下载后
+放到 `node_modules/ffmpeg-static/`（文件名需为 `ffmpeg.exe`）：
+
+```
+https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz
+```
+
+`ntsuspend` 是可选依赖（`optionalDependencies`），它从 GitHub Release 下载预编译
+的 `.node` 文件。装不上时 `npm install` **不会中断**，程序会退化为「不支持暂停
+后处理任务」，启动与录制不受影响。若安装日志里有 `ntsuspend` 相关报错，可以直接
+忽略。
+
+### 启动
+
+```bash
 npm start
 ```
 
-也可以双击启动器：Windows 用 `启动直播录制.bat`，macOS 用 `启动直播录制.command`
+也可双击启动器：Windows 用 `启动直播录制.bat`，macOS 用 `启动直播录制.command`
 （首次双击若提示「无法验证开发者」，右键 → 打开 → 打开）。macOS 细节见 `使用说明-macOS.md`。
+
+启动器只是 `node_modules/electron/dist/electron.exe` 的快捷方式，所以**必须
+先 `npm install`**，否则双击会闪退。
+
+### 想用字幕功能（可选）
+
+字幕需要额外的 Python 环境，同样一条命令：
+
+```powershell
+npm run transcribe:setup
+```
+
+前提是装过 Python 3.9+（安装时**勾选 Add to PATH**）。详见下文「语音转文字」。
+不装也能正常录制，只是「转字幕」按钮会提示环境未安装。
 
 打开后是个仪表盘：
 

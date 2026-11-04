@@ -108,3 +108,46 @@ test('orphan writer never touches another process when owner already matches',as
  assert.equal(queried,false,'同进程无需查询');
  assert.equal(killed,false);
 });
+// ---- 可选依赖缺失的降级 ----
+// ntsuspend 是 optionalDependencies，从 GitHub Release 下预编译二进制，
+// 国内网络下经常装不上。npm 不会因此中断安装，所以运行时必须能优雅处理
+// 缺失，而不是抛未捕获的 MODULE_NOT_FOUND 把后处理队列带崩。
+
+test('ntsuspend 缺失时暂停功能给出可读错误，而不是 MODULE_NOT_FOUND', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'process-control.js'), 'utf8');
+
+  // 必须是惰性加载：裸 require 会在模块加载阶段就抛错，
+  // 让「暂停」这一个功能拖垮整个 process-control 模块
+  assert.ok(/function loadNtsuspend/.test(src), '应惰性加载 ntsuspend');
+  assert.ok(!/\bconst\s+native\s*=\s*require\(['"]ntsuspend['"]\)/.test(src),
+    '不应在函数体内裸 require ntsuspend');
+  assert.ok(/缺少 ntsuspend/.test(src), '缺失时应给出明确中文提示');
+  assert.ok(/不影响录制/.test(src), '提示应说明不影响录制，避免用户误以为整个程序坏了');
+});
+
+test('即使 ntsuspend 不可用，模块本身仍能正常加载', () => {
+  const Module = require('node:module');
+  const orig = Module.prototype.require;
+  const fs = require('node:fs');
+  const p = path.join(__dirname, '..', 'src', 'core', 'process-control.js');
+
+  Module.prototype.require = function (id) {
+    if (id === 'ntsuspend') {
+      const e = new Error("Cannot find module 'ntsuspend'");
+      e.code = 'MODULE_NOT_FOUND';
+      throw e;
+    }
+    return orig.apply(this, arguments);
+  };
+  try {
+    delete require.cache[require.resolve(p)];
+    // 加载不应抛错
+    const mod = require(p);
+    assert.equal(typeof mod.control, 'function');
+    assert.equal(typeof mod.lowerPriority, 'function');
+  } finally {
+    Module.prototype.require = orig;
+    delete require.cache[require.resolve(p)];
+  }
+});
