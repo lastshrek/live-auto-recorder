@@ -234,6 +234,36 @@ npm run dist:mac    # macOS dmg (x64 + arm64)
 - **macOS 包必须在 macOS 上打**，Windows 包同理，electron-builder 不支持交叉打包。
 - `ffmpeg-static` 走 `asarUnpack`，否则 ffmpeg 二进制被压进 asar 后无法执行。
 
+### 应用图标
+
+设计是「深色圆角方形底 + 白色粗圆环 + 红色录制点」——红色录制点是录像类应用的通用符号，
+配色与 `src/gui/style.css` 的暗色主题同源。
+
+图标文件在 `build/`（即 electron-builder 的 `buildResources`）：
+
+| 文件 | 用途 |
+|---|---|
+| `icon.icns` | macOS，内含 16–1024 全尺寸 |
+| `icon.ico` | Windows，内含 16/24/32/48/64/128/256 |
+| `icon.png` | 1024px 通用（满出血，README / 商店图等） |
+| `icon-dock.png` | 1024px，符合 macOS 824/1024 内容网格，仅开发期 Dock 用 |
+| `icon.svg` | 矢量源文件 |
+
+`electron-builder.json` 里 `win.icon` / `mac.icon` / `nsis.installerIcon` 引用的是
+**相对 `buildResources` 的路径**（写 `icon.ico` 而不是 `build/icon.ico`），
+所以安装包、卸载器、Dock 与任务栏都会用这套图。
+
+改设计后重新生成：
+
+```bash
+npm run icon
+```
+
+生成器在 `scripts/icon/gen-icon.py`，依赖 macOS + Google Chrome + ImageMagick。
+它不是把 1024 缩到各尺寸，而是**按尺寸单独出图**：小尺寸会加粗圆环、放大红点，
+否则 16px 会糊成黑点。开发期（未打包）`src/main.js` 会用 `build/icon.png` 设置窗口
+图标、用 `icon-dock.png` 设置 macOS Dock 图标，避免显示 Electron 默认图标。
+
 ## 配置
 
 界面上能改的都建议在界面改。也可以直接编辑 `config.json`，**保存后 10 秒内热重载**，无需重启。

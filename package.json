@@ -14,7 +14,8 @@
     "transcribe:setup": "node scripts/setup-transcribe.cjs",
     "transcribe:check": "node scripts/setup-transcribe.cjs --check",
     "transcribe": "node scripts/transcribe-cli.cjs",
-    "install:win": "node scripts/install-windows.cjs"
+    "install:win": "node scripts/install-windows.cjs",
+    "icon": "python3 scripts/icon/gen-icon.py"
   },
   "keywords": [],
   "author": "",

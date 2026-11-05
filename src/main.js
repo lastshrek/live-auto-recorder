@@ -56,6 +56,12 @@ if (!app.requestSingleInstanceLock()) {
     }
   }
 
+  // 应用图标: 打包后由 icon.icns / icon.ico 提供; 开发期(未打包)用 build/ 下的 PNG,
+  // 否则窗口和 Dock 会显示 Electron 默认图标。
+  const BUILD_DIR = path.join(__dirname, '..', 'build');
+  const APP_ICON = path.join(BUILD_DIR, 'icon.png');
+  const hasAppIcon = fs.existsSync(APP_ICON);
+
   function createWindow() {
     mainWin = new BrowserWindow({
       width: 1180,
@@ -64,6 +70,7 @@ if (!app.requestSingleInstanceLock()) {
       minHeight: 620,
       show: true,
       autoHideMenuBar: true,
+      ...(hasAppIcon && process.platform !== 'darwin' ? { icon: APP_ICON } : {}),
       webPreferences: {
         preload: path.join(__dirname, 'gui', 'preload.js'),
         contextIsolation: true,
@@ -607,6 +614,12 @@ if (!app.requestSingleInstanceLock()) {
     registerProtocolHandlers();
     installInternalProtocolGuards();
     ignoreProtocolOpen();
+    // 开发期(未打包)手动设置 Dock 图标, 否则 macOS 显示 Electron 默认图标。
+    // 用 icon-dock.png: 它符合 macOS 824/1024 内容网格, 不会比相邻应用显得大一圈
+    if (hasAppIcon && !app.isPackaged && process.platform === 'darwin' && app.dock) {
+      const dockIcon = path.join(BUILD_DIR, 'icon-dock.png');
+      try { app.dock.setIcon(fs.existsSync(dockIcon) ? dockIcon : APP_ICON); } catch {}
+    }
     cfg = load();
     sched = new Scheduler(cfg);
     // 热重载换新 cfg 对象时同步本引用(GUI 保存/IPC 都用 main 的 cfg, 不同步会回滚外部编辑)
