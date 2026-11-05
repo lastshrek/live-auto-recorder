@@ -37,7 +37,9 @@ button:hover { border-color: var(--accent); }
 button:disabled { cursor: wait; opacity: .6; }
 .action-status { position: fixed; z-index: 100; bottom: 42px; left: 20px; right: 20px; padding: 12px 16px; border: 1px solid var(--accent); border-radius: 8px; background: var(--panel); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.ghost { background: transparent; }
+/* HTML 里统一写 class="ghost"（不是 button.ghost），选择器要能命中裸类名，
+   否则 .ghost 完全不生效，所有"次要按钮"都会显成实心块，在深色界面上很扎眼。 */
+button.ghost, .ghost { background: transparent; }
 button.danger:hover { border-color: var(--warn); color: var(--warn); }
 button.mini { padding: 4px 9px; font-size: 12px; border-radius: 5px; }
 
@@ -216,3 +218,15 @@ main.layout-collapsed .company-toolbar > :not(h2):not(#monitorCollapse) { displa
 .recordings-entry { display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); }
 .recordings-entry span { flex:1; overflow-wrap:anywhere; user-select:text; }
 #recordingsStatus { color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
+
+/* 保存路径: 输入框 + 浏览按钮 + 即时提示 */
+.dir-row { display:flex; gap:8px; align-items:center; }
+.dir-row input[type=text] { flex:1; min-width:0; }
+.dir-row button { flex:none; white-space:nowrap; }
+.dir-hint {
+  display:block; margin-top:6px; font-size:12px; line-height:1.5;
+  color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere;
+}
+.dir-hint.ok { color:var(--ok); }
+.dir-hint.bad { color:var(--warn); }
+.dir-hint.checking { color:var(--dim); font-style:italic; }

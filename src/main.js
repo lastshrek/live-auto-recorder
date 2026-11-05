@@ -433,11 +433,48 @@ if (!app.requestSingleInstanceLock()) {
     if (patch && typeof patch.webhookUrl === 'string' && !webhookUrlSafe(patch.webhookUrl) && patch.webhookUrl) {
       return { ok: false, error: 'Webhook 地址无效(仅支持公网 http/https)' };
     }
-    sched.updateSettings(patch || {});
+    // 保存路径要实测可写, 校验失败必须把原因带回界面（否则 IPC 直接 reject,
+    // 用户只看到一个 `Error invoking remote method` 的堆栈, 完全不知道该改什么）
+    try {
+      sched.updateSettings(patch || {});
+    } catch (e) {
+      log.warn('[gui] 设置保存失败:', e.message);
+      return { ok: false, error: e.message };
+    }
     applyAutoStart();
     applySleepBlock();
     pushState();
     return { ok: true };
+  });
+
+  // 校验某个路径能否作为录像目录（供界面选择目录后预检, 不必先保存）
+  H('settings:check-output-dir', (_e, dir) => {
+    try {
+      const { assertWritableDir } = require('./util/writable-dir');
+      const resolved = sched._resolveOutDir(String(dir || '').trim());
+      assertWritableDir(resolved);
+      return { ok: true, path: resolved, freeGB: (() => {
+        const n = require('./util/disk-free').freeBytes(resolved);
+        return typeof n === 'number' ? +(n / 1024 ** 3).toFixed(1) : null;
+      })() };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  // 选目录对话框。返回选中的绝对路径, 由前端决定是否采用。
+  H('settings:pick-output-dir', async () => {
+    try {
+      const r = await dialog.showOpenDialog(mainWin, {
+        title: '选择录像保存目录',
+        properties: ['openDirectory', 'createDirectory'],
+        buttonLabel: '使用此目录',
+      });
+      if (r.canceled || !r.filePaths?.length) return { ok: false, canceled: true };
+      return { ok: true, path: r.filePaths[0] };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   });
 
   // 批量导入: 每行 "链接 [备注]" 顺序解析添加

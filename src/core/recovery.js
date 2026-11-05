@@ -227,7 +227,9 @@ class RecoveryController{
     const existing=this.s.history.findIndex(h=>h.jobId===job.id);
     if(existing<0&&job.historyRecorded)return;
     const files=videoFiles(rec,job).map(f=>path.relative(job.outputDir||this.s.outDir,f).replace(/\\/g,'/'));
-    const entry={...(existing>=0?this.s.history[existing]:{}),jobId:job.id,at:job.finishedAt||Date.now(),rid:job.rid,nickname:job.nickname,title:job.title||'',secs:job.secs||0,files,error,status,recoveryNotice:(rec.notices||[]).join('; ')};
+    // outRoot 记录本场录像所属目录。files 是相对它的路径，缺了它改保存路径后
+    // 旧记录就定位不到文件（会被误判成"文件已删除"并永久写回）。
+    const entry={...(existing>=0?this.s.history[existing]:{}),jobId:job.id,at:job.finishedAt||Date.now(),rid:job.rid,nickname:job.nickname,title:job.title||'',secs:job.secs||0,outRoot:job.outputDir||this.s.outDir,files,error,status,recoveryNotice:(rec.notices||[]).join('; ')};
     const history=[...this.s.history];if(existing>=0)history[existing]=entry;else history.push(entry);
     try{writeJson(this.s.historyFile,history.slice(-300),{backup:true});this.s.history=history.slice(-300);this.store.set(rec,{historyRecorded:true,historyError:''});}
     catch(e){this.store.set(rec,{historyError:e.message});log.error('[history] 状态暂未保存，将重试:',e.message);}

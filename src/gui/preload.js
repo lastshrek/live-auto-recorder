@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('api', {
   transcribe: (relative) => ipcRenderer.invoke('transcribe:start', relative),
   transcribeState: () => ipcRenderer.invoke('transcribe:state'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
+  pickOutputDir: () => ipcRenderer.invoke('settings:pick-output-dir'),
+  checkOutputDir: (dir) => ipcRenderer.invoke('settings:check-output-dir', dir),
   batchAdd: (text) => ipcRenderer.invoke('streamer:batch', text),
   exportList: () => ipcRenderer.invoke('streamer:export'),
   logsTail: () => ipcRenderer.invoke('logs:tail'),

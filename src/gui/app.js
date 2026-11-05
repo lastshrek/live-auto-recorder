@@ -462,6 +462,62 @@ $('btnAdd').onclick = safe(async () => {
 // ---- 设置抽屉 ----
 const drawer = $('settingsPanel');
 const backdrop = $('drawerBackdrop');
+
+// 保存路径的即时反馈。用户改完路径最怕的是"看起来保存成功、开录才发现存不进去"，
+// 所以输入停顿后就去实测一次可写性，把问题在保存前暴露。
+let dirCheckSeq = 0;
+function setDirHint(text, cls) {
+  const el = $('setOutDirHint');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'dir-hint' + (cls ? ' ' + cls : '');
+}
+async function checkOutDir(value) {
+  const raw = String(value || '').trim();
+  if (!raw) { setDirHint('', ''); return { ok: false }; }
+  const seq = ++dirCheckSeq;
+  setDirHint('正在检查该目录…', 'checking');
+  let r;
+  try {
+    r = await window.api.checkOutputDir(raw);
+  } catch (e) {
+    r = { ok: false, error: (e && e.message) || String(e) };
+  }
+  // 用户可能在等待期间又改了输入，旧结果直接丢弃，避免结论串台
+  if (seq !== dirCheckSeq) return r;
+  if (r && r.ok) {
+    const free = r.freeGB === null || r.freeGB === undefined ? '' : `，剩余 ${r.freeGB} GB`;
+    setDirHint(`可用 ✓\n${r.path}${free}`, 'ok');
+  } else {
+    setDirHint((r && r.error) || '该目录不可用', 'bad');
+  }
+  return r;
+}
+
+$('btnPickOutDir').onclick = safe(async () => {
+  const btn = $('btnPickOutDir');
+  btn.disabled = true;
+  try {
+    const r = await window.api.pickOutputDir();
+    if (!r || r.canceled) return;
+    if (!r.ok) { setDirHint(r.error || '选择目录失败', 'bad'); return; }
+    $('setOutDir').value = r.path;
+    await checkOutDir(r.path);
+  } finally {
+    btn.disabled = false;
+  }
+}, 'pickOutDir');
+
+let dirTimer = null;
+$('setOutDir').oninput = safe(() => {
+  clearTimeout(dirTimer);
+  dirTimer = setTimeout(() => { checkOutDir($('setOutDir').value).catch(() => {}); }, 600);
+}, 'outDirInput');
+
+$('setOutDir').onblur = safe(() => {
+  clearTimeout(dirTimer);
+  checkOutDir($('setOutDir').value).catch(() => {});
+}, 'outDirBlur');
 function openDrawer() {
   closeBatch();
   const s = (state && state.settings) || {};
@@ -469,6 +525,7 @@ function openDrawer() {
   $('setMax').value = s.maxConcurrentRecordings ?? 6;
   $('setQuality').value = s.quality || 'highest';
   $('setOutDir').value = s.outputDir || 'recordings';
+  setDirHint('', '');
   $('setDisk').value = s.minFreeGB ?? 5;
   $('setSeg').value = s.segment ?? '0';
   $('setMinSize').value = s.minSizeMB ?? 0;
@@ -500,6 +557,16 @@ $('btnSaveSettings').onclick = safe(async () => {
   }
   btn.disabled = true;
   try {
+    // 保存路径换了就先验证一次，不要等到开录才发现存不进去
+    const prevDir = String((state && state.settings && state.settings.outputDir) || 'recordings');
+    const nextDir = String($('setOutDir').value || '').trim();
+    if (nextDir !== prevDir) {
+      const chk = await checkOutDir(nextDir);
+      if (!chk || !chk.ok) {
+        alert('保存路径不可用，请先修正：\n\n' + ((chk && chk.error) || '未知原因'));
+        return;
+      }
+    }
     const r = await window.api.saveSettings({
       pollIntervalSec: +$('setPoll').value,
       maxConcurrentRecordings: +$('setMax').value,

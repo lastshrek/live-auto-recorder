@@ -118,7 +118,13 @@
       <option value="SD1">超清</option>
       <option value="SD2">高清</option>
     </select>（指定档不存在时自动向下回落）</label>
-    <label>保存路径 <input id="setOutDir" type="text" placeholder="recordings = 应用目录下(可填绝对路径)" /></label>
+    <label>保存路径
+      <span class="dir-row">
+        <input id="setOutDir" type="text" placeholder="recordings = 应用目录下(可填绝对路径)" />
+        <button id="btnPickOutDir" type="button" class="ghost" title="选择文件夹">浏览…</button>
+      </span>
+      <span id="setOutDirHint" class="dir-hint"></span>
+    </label>
     <label>磁盘最低剩余 <input id="setDisk" type="number" min="0" max="500" /> GB（低于即停止录制）</label>
     <label>定时分段 <input id="setSeg" type="text" placeholder="90 = 分钟; 500MB = 按大小; 0 = 不分段" /></label>
     <label>最小处理文件 <input id="setMinSize" type="number" min="0" max="100000" /> MB（小于此的分片跳过转封装, 过滤断流残片, 0=不过滤）</label>

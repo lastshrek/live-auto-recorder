@@ -11,8 +11,9 @@ const { Recorder } = require('./recorder');
 const { PostProcessor } = require('./postprocess');
 const { resolveStreamUrl } = require('./adapter/douyin');
 const {roomDirectory,recordingDirs,locateHistoryFile}=require('./recording-paths');
-const {reconcileHistory}=require('./history-reconcile');
+const {reconcileHistory,stampRoot}=require('./history-reconcile');
 const {writeJson}=require('../util/atomic-json');
+const {assertWritableDir}=require('../util/writable-dir');
 const {RecoveryController}=require('./recovery');
 const {NetworkBackoff}=require('./network-backoff');
 const {TranscribeQueue, pickTranscribableFiles}=require('./transcribe-queue');
@@ -144,22 +145,40 @@ class Scheduler {
     if(this.recovery)protectedBases.push(...this.recovery.bases());
     if(this.post.current?.recorder?.base)protectedBases.push(this.post.current.recorder.base);
     for(const job of this.post.queue||[])if(job.recorder?.base)protectedBases.push(job.recorder.base);
-    try {
-      for (const dir of recordingDirs(this.outDir)) for (const f of fs.readdirSync(dir)) {
-        if (!/\.mp4$|\.jsonl$/.test(f)) continue;
-        const p = path.join(dir, f);
-        if(protectedBases.some(base=>p.startsWith(base)))continue;
-        try {
-          const st = fs.lstatSync(p);
-          if (st.isFile() && !st.isSymbolicLink() && !f.includes('.pending.') && st.mtimeMs < cutoff) { fs.unlinkSync(p); removed += 1; }
-        } catch {}
+    // 用户改过保存路径后, 旧目录里的录像同样受保留期约束; 只扫当前目录会让
+    // 旧录像永久堆积(而且界面上已经看不到它们, 更难发现)。
+    // 只清理确定是本应用产出的目录, 避免误删用户自己放在那里的其他文件。
+    const roots = new Set([this.outDir, ...this._historyRoots()]);
+    for (const root of roots) {
+      if (!root) continue;
+      try { if (!fs.existsSync(root)) continue; } catch { continue; }
+      try {
+        for (const dir of recordingDirs(root)) for (const f of fs.readdirSync(dir)) {
+          if (!/\.mp4$|\.jsonl$/.test(f)) continue;
+          const p = path.join(dir, f);
+          if(protectedBases.some(base=>p.startsWith(base)))continue;
+          try {
+            const st = fs.lstatSync(p);
+            if (st.isFile() && !st.isSymbolicLink() && !f.includes('.pending.') && st.mtimeMs < cutoff) { fs.unlinkSync(p); removed += 1; }
+          } catch {}
+        }
+      } catch (e) {
+        log.warn(`[cleanup] 清理 ${root} 失败:`, e.message);
       }
-      if (removed) log.info(`[cleanup] 按保留${days}天策略清理了 ${removed} 个文件`);
-      // 刚删掉的文件要立刻从历史里收敛, 否则界面会一直显示打不开的条目
-      if (removed) this._syncHistoryWithDisk();
-    } catch (e) {
-      log.warn('[cleanup] 清理失败:', e.message);
     }
+    if (removed) log.info(`[cleanup] 按保留${days}天策略清理了 ${removed} 个文件`);
+    // 刚删掉的文件要立刻从历史里收敛, 否则界面会一直显示打不开的条目
+    if (removed) this._syncHistoryWithDisk();
+  }
+
+  // 历史里出现过的录像根目录(按新到旧, 去重)。用于让保留期策略也覆盖旧目录。
+  _historyRoots() {
+    const out = [];
+    for (const e of this.history || []) {
+      const r = e && typeof e.outRoot === 'string' ? e.outRoot.trim() : '';
+      if (r && r !== this.outDir && !out.includes(r)) out.push(r);
+    }
+    return out;
   }
 
   // 把历史记录收敛到磁盘真实状态; 有变化才写盘, 避免无谓地刷 mtime。
@@ -729,6 +748,9 @@ class Scheduler {
         nickname: task.lastInfo?.nickname || task.item.name || task.rid,
         title: task.lastInfo?.title || '',
         secs: +secs,
+        // files 是相对路径, 必须连同根目录一起记下, 否则用户改了保存路径后
+        // 这些引用就再也定位不到 (会被误判为"文件已删除"并写回磁盘)
+        outRoot: this.outDir,
         files: files.map((f) => path.relative(this.outDir,f).replace(/\\/g,'/')),
         error: task.lastError,
         recoveryNotice:task.lastNotice,
@@ -815,9 +837,13 @@ class Scheduler {
     if (typeof patch.outputDir === 'string') {
       const od = patch.outputDir.trim().slice(0, 200).replace(/^[-\s]+/, '');
       if (od && !od.includes('..') && !/[\x00"<>|?*]/.test(od)) {
+        const candidate = this._resolveOutDir(od);
+        // 目录必须真的可写: mkdir 成功不代表能写成文件(只读盘/权限不足/
+        // 网盘掉线都会在录制时才暴露)。先落一个探针文件验证，避免用户改完
+        // 设置、下一场直播开录才发现存不进去。
+        assertWritableDir(candidate);
         s.outputDir = od;
-        nextOutDir = this._resolveOutDir(od);
-        fs.mkdirSync(nextOutDir, { recursive: true });
+        nextOutDir = candidate;
       }
     }
     if (Number.isFinite(+patch.keepDays)) s.keepDays = Math.min(3650, Math.max(0, +patch.keepDays));
@@ -825,10 +851,29 @@ class Scheduler {
     if (typeof patch.autoStart === 'boolean') s.autoStart = patch.autoStart;
     if (typeof patch.webhookUrl === 'string') s.webhookUrl = patch.webhookUrl.slice(0, 500);
     const { save } = require('./store');
+    // 保存路径变更时，正在录制的文件会继续写入原目录（rec.base 在开录时就已
+    // 定下绝对路径）。这比中途切盘安全，但对用户不直观，所以明确告知。
+    const dirChanged = nextOutDir !== this.outDir;
+    const activeRecs = dirChanged ? this.recordingCount : 0;
+    if (dirChanged) {
+      // 关键顺序：先把旧目录写进所有还没归属的老条目，再切 outDir。
+      // 反过来的话，下一轮核对会拿新目录去检查旧条目，判定"文件全没了"，
+      // 把 files 清空并写回磁盘 —— 引用永久丢失，改回原目录也救不回来。
+      const stamped = stampRoot(this.history, this.outDir);
+      if (stamped) log.info(`[history] 已为 ${stamped} 条历史补记录像目录: ${this.outDir}`);
+    }
     save({...this.cfg,settings:s});
     this.cfg.settings=s;
     this.outDir=nextOutDir;
     this.post.s = s;
+    if (dirChanged) {
+      log.info(`[sched] 保存路径已改为 ${nextOutDir}`);
+      if (activeRecs > 0) {
+        log.warn(`[sched] 当前有 ${activeRecs} 路正在录制，将写满原目录后才使用新路径`);
+      }
+      // 换了目录立刻核对一次：老条目的文件在旧目录，新条目的在新目录
+      this._syncHistoryWithDisk();
+    }
     this.recovery?.tick().catch(e=>log.warn('[quiet] 恢复队列检查失败:',e.message));
     // 轮询间隔变更: _loop 每轮实时读 pollIntervalSec, 下一轮自然生效(无需动定时器;
     // 旧实现用setInterval重建会叠加慢请求+以空rid做键互相覆盖泄漏定时器)
