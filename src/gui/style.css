@@ -230,3 +230,8 @@ main.layout-collapsed .company-toolbar > :not(h2):not(#monitorCollapse) { displa
 .dir-hint.ok { color:var(--ok); }
 .dir-hint.bad { color:var(--warn); }
 .dir-hint.checking { color:var(--dim); font-style:italic; }
+
+/* 录制期间禁止改保存位置：控件看起来就该是"现在动不了" */
+.dir-row input[type=text]:disabled,
+.dir-row button:disabled { opacity:.5; cursor:not-allowed; }
+.dir-row input[type=text]:disabled { pointer-events:none; }

@@ -209,6 +209,23 @@ class Scheduler {
     return [...this.tasks.values()].filter((t) => t.state === 'recording').length;
   }
 
+  // 正在往录像目录写文件的场次（recording + stopping）。
+  //
+  // 与 recordingCount 的区别：stopping 已经不再接收新直播流，但 ffmpeg 还在
+  // 收尾——把缓冲区写盘、转封装出 MP4。此时路径仍然是开录那一刻确定的那个，
+  // 改动保存位置会让"正在写的文件"与"配置里的目录"对不上，所以判断能不能
+  // 改目录时必须把它算进来。recordingCount 是给并发上限用的，语义不同，不能混。
+  get activeWriteCount() {
+    return [...this.tasks.values()].filter((t) => t.state === 'recording' || t.state === 'stopping').length;
+  }
+
+  // 正在写文件的场次摘要，用于"暂时不能改目录"的提示里指名道姓。
+  activeWriteNames() {
+    return [...this.tasks.values()]
+      .filter((t) => t.state === 'recording' || t.state === 'stopping')
+      .map((t) => t.lastInfo?.nickname || t.item?.nickname || t.item?.name || String(t.rid));
+  }
+
   /**
    * 执行一次转写。环境缺失时抛错，由队列记为 failed，不影响录像状态。
    *
@@ -804,6 +821,9 @@ class Scheduler {
       post,
       // 查不到时给 null 而不是 NaN：界面据此显示"—"，避免把失败渲染成 0.0GB
       diskFreeGB: (() => { const n = this.freeBytes(); return n === null ? null : +(n / 1024 ** 3).toFixed(1); })(),
+      // 有场次正在往录像目录写文件（含收尾）。界面据此锁住「保存路径」，
+      // 否则用户点了「浏览…」选完目录、保存时才被拒，白操作一场。
+      writing: this.activeWriteCount > 0,
       settings: this.cfg.settings,
       companies: this.cfg.companies || [],
       ungroupedCollapsed: !!this.cfg.ungroupedCollapsed,
@@ -838,12 +858,35 @@ class Scheduler {
       const od = patch.outputDir.trim().slice(0, 200).replace(/^[-\s]+/, '');
       if (od && !od.includes('..') && !/[\x00"<>|?*]/.test(od)) {
         const candidate = this._resolveOutDir(od);
-        // 目录必须真的可写: mkdir 成功不代表能写成文件(只读盘/权限不足/
-        // 网盘掉线都会在录制时才暴露)。先落一个探针文件验证，避免用户改完
-        // 设置、下一场直播开录才发现存不进去。
-        assertWritableDir(candidate);
-        s.outputDir = od;
-        nextOutDir = candidate;
+        // 只有路径真的变了才需要走这层检查。
+        // 界面保存设置时会无条件带上 outputDir（哪怕用户只改了轮询间隔），
+        // 若不做这个判断，录制期间连"改轮询间隔"都会被拒，属于误伤。
+        const changed = candidate !== this.outDir;
+        if (changed) {
+          // 录制期间禁止改保存位置。
+          //
+          // 正在写的文件路径在开录那一刻就定了（rec.base 是绝对路径），改目录
+          // 不会让它们跟着走：结果是配置写着新目录，实际文件落在旧目录，用户
+          // 按新路径去找什么都找不到。更糟的是收尾/转封装还在写，切换时机不可控。
+          // 与其做半吊子的"下一场生效"，不如直接不允许，并在提示里说清什么时候能改。
+          const active = this.activeWriteCount;
+          if (active > 0) {
+            const names = this.activeWriteNames();
+            const who = names.slice(0, 3).join('、');
+            const more = names.length > 3 ? ` 等 ${active} 路` : '';
+            const e = new Error(`正在录制，不能修改保存位置。\n`
+              + `当前有 ${active} 路在写文件：${who}${more}\n`
+              + '请等录制结束后再改（正在写的文件不会跟着目录走，强改会让文件散落在两个地方）。');
+            e.code = 'LR_RECORDING_ACTIVE';
+            throw e;
+          }
+          // 目录必须真的可写: mkdir 成功不代表能写成文件(只读盘/权限不足/
+          // 网盘掉线都会在录制时才暴露)。先落一个探针文件验证，避免用户改完
+          // 设置、下一场直播开录才发现存不进去。
+          assertWritableDir(candidate);
+          s.outputDir = od;
+          nextOutDir = candidate;
+        }
       }
     }
     if (Number.isFinite(+patch.keepDays)) s.keepDays = Math.min(3650, Math.max(0, +patch.keepDays));

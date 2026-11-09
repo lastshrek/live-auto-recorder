@@ -95,6 +95,9 @@ function fmtDur(ms) {
 // ---- 主表渲染 ----
 function render() {
   if (!state || !state.tasks) return;
+  // 录制开始/结束会改变"能否改保存位置"，每次状态刷新都同步一次锁。
+  // 否则抽屉开着时录到一半，控件还停在解锁状态，点了才被后端拒。
+  try { applyDirLock(); } catch {}
   // diskFreeGB 为 null 表示查询失败（不是 0），不要渲染成 "null GB"
   $('diskInfo').textContent = state.diskFreeGB === null || state.diskFreeGB === undefined
     ? '磁盘剩余 —'
@@ -475,6 +478,9 @@ function setDirHint(text, cls) {
 async function checkOutDir(value) {
   const raw = String(value || '').trim();
   if (!raw) { setDirHint('', ''); return { ok: false }; }
+  // 录制期间不允许改，此时不该再去探测——否则会显示"可用 ✓"，
+  // 让用户以为能改，点了保存才被拒。
+  if (state && state.writing) return { ok: false, error: '正在录制，暂不能修改' };
   const seq = ++dirCheckSeq;
   setDirHint('正在检查该目录…', 'checking');
   let r;
@@ -518,6 +524,30 @@ $('setOutDir').onblur = safe(() => {
   clearTimeout(dirTimer);
   checkOutDir($('setOutDir').value).catch(() => {});
 }, 'outDirBlur');
+
+// 有场次正在写文件时锁住保存路径。
+//
+// 后端本来就会拒绝（updateSettings 抛 LR_RECORDING_ACTIVE），但如果只在保存时
+// 才报错，用户已经点过「浏览…」、挑完目录，白忙一场。这里提前把控件禁掉，
+// 并把原因直接写在控件位置，不用去别处找提示。
+function applyDirLock() {
+  const locked = !!(state && state.writing);
+  const input = $('setOutDir');
+  const btn = $('btnPickOutDir');
+  if (!input || !btn) return;
+  if (input.disabled !== locked) input.disabled = locked;
+  if (btn.disabled !== locked) btn.disabled = locked;
+  input.title = locked ? '正在录制，不能修改保存位置' : '';
+  btn.title = locked ? '正在录制，不能修改保存位置' : '选择文件夹';
+  // 已锁且没有别的提示时，说明原因；解锁时清掉，避免残留
+  const hint = $('setOutDirHint');
+  if (locked && hint && !hint.dataset.keep) {
+    setDirHint('录制进行中，暂不能修改（正在写的文件不会跟着目录走）。停止录制后即可修改。', 'bad');
+  } else if (!locked && hint && hint.className.includes('bad')) {
+    setDirHint('', '');
+  }
+}
+window.applyDirLock = applyDirLock;
 function openDrawer() {
   closeBatch();
   const s = (state && state.settings) || {};
@@ -525,6 +555,7 @@ function openDrawer() {
   $('setMax').value = s.maxConcurrentRecordings ?? 6;
   $('setQuality').value = s.quality || 'highest';
   $('setOutDir').value = s.outputDir || 'recordings';
+  applyDirLock();
   setDirHint('', '');
   $('setDisk').value = s.minFreeGB ?? 5;
   $('setSeg').value = s.segment ?? '0';
@@ -561,6 +592,14 @@ $('btnSaveSettings').onclick = safe(async () => {
     const prevDir = String((state && state.settings && state.settings.outputDir) || 'recordings');
     const nextDir = String($('setOutDir').value || '').trim();
     if (nextDir !== prevDir) {
+      // 录制期间后端会拒绝。这里提前拦一次，把话说清楚，而不是让用户对着
+      // 一句 LR_RECORDING_ACTIVE 猜。
+      if (state && state.writing) {
+        alert('正在录制，不能修改保存位置。\n\n'
+          + '正在写的文件路径在开录时就定了，改目录不会让它跟着走，\n'
+          + '结果会散落在两个地方。请等录制结束后再改。');
+        return;
+      }
       const chk = await checkOutDir(nextDir);
       if (!chk || !chk.ok) {
         alert('保存路径不可用，请先修正：\n\n' + ((chk && chk.error) || '未知原因'));
