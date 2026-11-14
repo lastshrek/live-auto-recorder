@@ -2,9 +2,19 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, shell, powerSaveBlocker, dialog, clipboard } = require('electron');
+const { dataRoot } = require('./util/app-paths');
 
-// 锚定进程工作目录到项目根(配置/录像等相对路径依赖此设定)
-process.chdir(path.join(__dirname, '..'));
+// 锚定进程工作目录到可写数据根(配置/录像等相对路径依赖此设定)。
+// 打包后 __dirname 位于 app.asar 内 —— 它是只读归档文件，chdir 进去会 ENOTDIR，
+// 所以用安装目录(Windows)或 userData(macOS/Linux)。bootstrap 已设置 LR_ROOT。
+const ROOT = process.env.LR_ROOT || dataRoot(app);
+process.env.LR_ROOT = ROOT;
+try {
+  fs.mkdirSync(ROOT, { recursive: true });
+  process.chdir(ROOT);
+} catch (e) {
+  console.error('[app] 无法切换到应用数据目录:', e.message);
+}
 
 const log = require('./util/log');
 const { load, save } = require('./core/store');
@@ -18,7 +28,7 @@ if (!app.requestSingleInstanceLock()) {
   log.info('已有实例在运行, 退出');
   app.quit();
 } else {
-  const health=require('./util/app-health').installHealth(require('electron'),log,path.join(__dirname,'..'));
+  const health=require('./util/app-health').installHealth(require('electron'),log,ROOT);
   let mainWin = null;
   let tray = null;
   let sched = null;
@@ -60,7 +70,8 @@ if (!app.requestSingleInstanceLock()) {
   // 否则窗口和 Dock 会显示 Electron 默认图标。
   const BUILD_DIR = path.join(__dirname, '..', 'build');
   const APP_ICON = path.join(BUILD_DIR, 'icon.png');
-  const hasAppIcon = fs.existsSync(APP_ICON);
+  // 打包后 build/ 在 asar 内，窗口图标由 exe / .app 提供，不再从存档里读。
+  const hasAppIcon = !app.isPackaged && fs.existsSync(APP_ICON);
 
   function createWindow() {
     mainWin = new BrowserWindow({

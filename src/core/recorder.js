@@ -8,7 +8,10 @@ const { spawn: spawnRaw } = require('node:child_process');
 const spawn = (cmd, argv, opts) => spawnRaw(cmd, argv, Object.assign({}, opts, { windowsHide: true }));
 const fs = require('node:fs');
 const path = require('node:path');
-const ffmpegPath = require('ffmpeg-static');
+const ffmpegStatic = require('ffmpeg-static');
+// 打包后 ffmpeg 位于 app.asar.unpacked；asar 内的路径对 spawn 不可见(ENOENT)。
+const { unpackedPath } = require('../util/app-paths');
+const ffmpegPath = ffmpegStatic ? unpackedPath(ffmpegStatic) : ffmpegStatic;
 const log = require('../util/log');
 const { UA } = require('../util/const');
 const { parsePacketHashes, createPacketHashParser, overlapCut, hasMediaErrors } = require('./media');

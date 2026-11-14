@@ -3,7 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {writeJson}=require('../util/atomic-json');
 
-const ROOT = path.join(__dirname, '..', '..');
+// 运行时可写根目录。打包后 __dirname 在 app.asar 内(只读归档文件)，直接拼接
+// 会得到 ...\app.asar\config.json 并在写入时 ENOTDIR；bootstrap/main 会先算好
+// 真实可写目录写入 LR_ROOT。开发期与测试没有该变量，仍用仓库根目录。
+const ROOT = process.env.LR_ROOT ? path.resolve(process.env.LR_ROOT) : path.join(__dirname, '..', '..');
 const CONFIG_PATH = path.join(ROOT, 'config.json');
 
 const DEFAULT = {

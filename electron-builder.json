@@ -34,7 +34,8 @@
   ],
   "asar": true,
   "asarUnpack": [
-    "node_modules/ffmpeg-static/**"
+    "node_modules/ffmpeg-static/**",
+    "src/transcribe/**"
   ],
   "win": {
     "icon": "icon.ico",

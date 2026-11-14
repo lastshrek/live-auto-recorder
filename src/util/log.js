@@ -2,7 +2,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const LOG_DIR = process.env.LR_LOG_DIR || path.join(__dirname, '..', '..', 'logs');
+// 打包后 __dirname 在 app.asar 内，不能作为日志目录(暂存归档是只读文件)。
+// LR_ROOT 由 bootstrap 按运行环境算好；开发期/测试没有该变量，仍用仓库根目录。
+const ROOT = process.env.LR_ROOT ? path.resolve(process.env.LR_ROOT) : path.join(__dirname, '..', '..');
+const LOG_DIR = process.env.LR_LOG_DIR || path.join(ROOT, 'logs');
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
 let stream = null;

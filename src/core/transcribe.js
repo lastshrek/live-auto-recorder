@@ -16,7 +16,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const SCRIPT = path.join(__dirname, '..', 'transcribe', 'run_asr.py');
+const { unpackedPath } = require('../util/app-paths');
+// Python 无法读取 asar 归档，脚本必须指向解包后的真实文件。
+const SCRIPT = unpackedPath(path.join(__dirname, '..', 'transcribe', 'run_asr.py'));
 const DEFAULT_MODEL = 'qwen3-asr-0.6b-int8';
 
 /** 候选 Python 解释器，按优先级排列。venv 优先，避免污染系统环境。 */
@@ -126,7 +128,7 @@ function wavDurationSeconds(file) {
  */
 async function transcribeFile(input, options = {}) {
   const {
-    ffmpegPath = require('ffmpeg-static'),
+    ffmpegPath = unpackedPath(require('ffmpeg-static')),
     venvDir,
     modelDir,
     vadModel,

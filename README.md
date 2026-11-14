@@ -232,7 +232,25 @@ npm run dist:mac    # macOS dmg (x64 + arm64)
 
 两点注意：
 - **macOS 包必须在 macOS 上打**，Windows 包同理，electron-builder 不支持交叉打包。
-- `ffmpeg-static` 走 `asarUnpack`，否则 ffmpeg 二进制被压进 asar 后无法执行。
+- `ffmpeg-static` 与 `src/transcribe/` 需要 `asarUnpack`，否则二进制/脚本被压进 asar 后无法执行。
+
+### 打包后的数据目录
+
+打包后代码位于 `resources/app.asar`。asar 是只读归档文件而不是目录，不能当工作目录用，
+所以运行时数据（`config.json`、`logs/`、`recordings/`、`history.json`、`recording-jobs.json`、
+`runtime/`）会落到真实可写目录：
+
+| 平台 | 数据目录 |
+|---|---|
+| Windows | exe 所在安装目录（保持便携布局，相对 `outputDir` 仍按安装目录解析） |
+| Windows（安装目录不可写，如 Program Files） | 自动退回 `%APPDATA%\直播自动录制` |
+| macOS / Linux | Electron userData（macOS 为 `~/Library/Application Support/直播自动录制`） |
+
+开发期（`npm start`）仍使用仓库根目录，行为和以前一致。也可用环境变量
+`LR_ROOT=<绝对路径>` 强制指定数据目录（便携部署/多份配置隔离）。
+
+> Windows 卸载程序会清理安装目录。若把录像留在默认位置，**卸载前请先移走录像**；
+> 长期保存建议在设置里把「保存路径」改成 `D:\录像` 这类安装目录之外的绝对路径。
 
 ### 应用图标
 
