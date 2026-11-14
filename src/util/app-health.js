@@ -20,7 +20,7 @@ function installHealth(electron,log,root){
     if(state.expectedExit)return;
     if(watchdog?.pid){try{process.kill(watchdog.pid,0);return;}catch(error){if(error.code!=='ESRCH')return;}}
     if(Date.now()-lastStart<10000)return;lastStart=Date.now();
-    try{const child=spawn(process.execPath,[path.join(__dirname,'app-watchdog.cjs'),file,String(process.pid),process.execPath,root],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'},detached:true,windowsHide:true,stdio:'ignore'});watchdog=child;
+    try{const entry=app.isPackaged?'':root,child=spawn(process.execPath,[path.join(__dirname,'app-watchdog.cjs'),file,String(process.pid),process.execPath,root,entry],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'},detached:true,windowsHide:true,stdio:'ignore'});watchdog=child;
       child.on('error',error=>{if(watchdog===child)watchdog=null;log.error('[health] 守护进程启动失败:',error.message);});
       child.on('exit',(code,signal)=>{if(watchdog===child)watchdog=null;if(!state.expectedExit)log.warn('[health] 守护进程退出，将尝试恢复:',code,signal||'');});
       child.unref();log.info('[health] 守护进程已启动:',child.pid);

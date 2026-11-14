@@ -28,11 +28,17 @@ function installInternalProtocolGuards(){
 // 声明由本应用处理的抖音系自定义协议(渲染进程内注册 + 注册表双保险)
 const PROTOCOLS = ['douyin', 'snssdk1128', 'snssdk1233', 'aweme', 'bitbrowser', 'livepartner'];
 
+// 开发期走 electron.exe <appPath>，必须显式带上应用路径；
+// 打包后 exe 自带应用路径，多传 app.asar 会被当成坏参数，保持空参数即可。
+function launchArgs() {
+  return app.isPackaged ? [] : [app.getAppPath()];
+}
+
 function registerProtocolHandlers() {
   for (const p of PROTOCOLS) {
     try {
-      // 显式指定可执行文件+应用路径, 保证唤起路由到本应用(单实例锁会转发到运行中的实例)
-      app.setAsDefaultProtocolClient(p, process.execPath, [app.getAppPath()]);
+      // 显式指定可执行文件(+开发期应用路径), 保证唤起路由到本应用(单实例锁会转发到运行中的实例)
+      app.setAsDefaultProtocolClient(p, process.execPath, launchArgs());
     } catch (e) {
       log.warn(`[proto] 注册 ${p}:// 失败:`, e.message);
     }
@@ -44,7 +50,7 @@ function registerProtocolHandlers() {
 function unregisterProtocolHandlers() {
   for (const p of PROTOCOLS) {
     try {
-      app.removeAsDefaultProtocolClient(p, process.execPath, [app.getAppPath()]);
+      app.removeAsDefaultProtocolClient(p, process.execPath, launchArgs());
     } catch {}
   }
   log.info('[proto] 已注销协议处理器(系统协议关联已还原)');
