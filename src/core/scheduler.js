@@ -97,7 +97,13 @@ class Scheduler {
       if (result && result.skipped) return; // 内容不合格（太小/损坏）也不要字幕
       if (!this.cfg.settings.autoTranscribe) return;
       try {
-        const files = pickTranscribableFiles(job.recorder?.files || []);
+        // 成片路径不能读 job.recorder.files —— recorder 实例上从来没有这个字段，
+        // 自动转写会永远拿到空数组、静默不工作（历史 bug）。
+        // 正确来源是 videoFiles(rec, job)：收尾/发布后它返回最终命名的文件。
+        const rec = job.recorder;
+        const state = rec?.jobId && this.recovery?.store ? this.recovery.store.get(rec.jobId) : null;
+        const { videoFiles } = require('./video-names');
+        const files = pickTranscribableFiles(videoFiles(rec, state || {}));
         for (const f of files) {
           this.transcriber.enqueue(f, { nickname: job.nickname || '' });
         }
