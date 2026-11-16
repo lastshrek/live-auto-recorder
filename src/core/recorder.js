@@ -552,6 +552,13 @@ class Recorder {
     try{source=await this._scanVideo(flv);}catch(e){if(['LR_DISK_SPACE','LR_SOURCE_BUSY','LR_USER_PAUSED'].includes(e.code))throw e;return null;}
     const sourceFrames=source.packetCount??source.packets.length;
     if(sourceFrames<30)return null;
+    const judge=(output)=>{
+      const outputFrames=output.packetCount??output.packets.length;
+      const missing=Math.max(0,sourceFrames-outputFrames);
+      const limit=Math.max(2,Math.ceil(sourceFrames*0.0001));
+      if(missing>limit||Math.abs(output.duration-source.duration)>2)return null;
+      return {kind:'decode',sourceFrames,outputFrames,missingFrames:missing};
+    };
     for(const codec of [['h264_nvenc','-preset','p5','-rc','vbr','-cq','20','-b:v','0'],['libx264','-preset','veryfast','-crf','20']]){
       this.assertSpace(Math.max(64*1024**2,this._sizeOf(flv)*4),'恢复损坏画面');
       this.onStage?.('恢复损坏画面');
@@ -568,13 +575,32 @@ class Recorder {
       // Source decoder warnings are expected; the rebuilt output must decode cleanly.
       const checked=await this.validateMedia(pending);if(!checked.ok)continue;
       let output;try{output=await this._scanVideo(pending);}catch(e){if(['LR_DISK_SPACE','LR_SOURCE_BUSY','LR_USER_PAUSED'].includes(e.code))throw e;continue;}
-      const outputFrames=output.packetCount??output.packets.length;
-      const missing=Math.max(0,sourceFrames-outputFrames);
-      const limit=Math.max(2,Math.ceil(sourceFrames*0.0001));
-      if(missing>limit||outputFrames>sourceFrames+2||Math.abs(output.duration-source.duration)>2)continue;
-      return {kind:'decode',sourceFrames,outputFrames,missingFrames:missing,vcodec:codec[0]};
+      // VFR 保留模式不补帧也不丢帧，帧数必须几乎一致
+      const judged=judge(output);if(!judged||(output.packetCount??output.packets.length)>sourceFrames+2)continue;
+      return {...judged,vcodec:codec[0]};
     }
-    return null;
+    // 兜底：VFR 保留模式对「源流时间戳重复」的输入仍会产出等值 DTS，过不了校验
+    // （实测抖音部分推流时间戳重复帧占比不小）。退回标准重编码：视频 CFR 会复制
+    // 时间戳重复的帧（画面重复、无内容损失），音频一并重编码，时间戳全部重建。
+    // 帧数校验只禁止丢帧，允许补帧——丢帧才是内容损失，补帧最多轻微卡顿感。
+    try{
+      this.assertSpace(Math.max(64*1024**2,this._sizeOf(flv)*3),'恢复损坏画面');
+      this.onStage?.('恢复损坏画面(标准重编码)');
+      const r=await this._runFfmpeg(['-y','-v','warning','-fflags','+discardcorrupt','-err_detect','ignore_err','-i',flv,
+        '-map','0:v:0','-map','0:a?',
+        '-c:v','libx264','-preset','veryfast','-crf','20','-c:a','aac','-b:a','128k',
+        '-movflags','+faststart',pending],86400000,false,source.duration);
+      if(r.spaceError||/no space left|ENOSPC/i.test(r.stderr))throw new DiskSpaceError(r.stderr);
+      if(r.code!==0||this._sizeOf(pending)<=1024)return null;
+      const checked=await this.validateMedia(pending);if(!checked.ok)return null;
+      let output;try{output=await this._scanVideo(pending);}catch(e){if(['LR_DISK_SPACE','LR_SOURCE_BUSY','LR_USER_PAUSED'].includes(e.code))throw e;return null;}
+      const judged=judge(output);if(!judged)return null;
+      const outputFrames=output.packetCount??output.packets.length;
+      return {...judged,outputFrames,dupFrames:Math.max(0,outputFrames-sourceFrames),vcodec:'libx264',standard:true};
+    }catch(e){
+      if(['LR_DISK_SPACE','LR_SOURCE_BUSY','LR_USER_PAUSED'].includes(e.code))throw e;
+      return null;
+    }
   }
 
   async remuxAll(minSizeMB = 0) {
