@@ -22,6 +22,16 @@ import sys
 import time
 import wave
 
+# Windows 控制台默认 GBK，识别结果里的生僻字/emoji 会把 print 炸掉，
+# 而此时 SRT/TXT 已经写完——上层只看退出码，会误判成「转写失败」。
+# 统一把 stdout/stderr 切成 UTF-8 再输出。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def die(msg, code=2):
     """把错误以 JSON 输出到 stdout，让 Node 侧能统一解析，避免只有 stderr。"""
