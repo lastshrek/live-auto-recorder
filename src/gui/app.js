@@ -92,6 +92,65 @@ function fmtDur(ms) {
   return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
 }
 
+// 每秒一次的状态刷新不该整表重建。结构(谁在录、什么状态、有哪些按钮)没变时
+// 只更新时长/大小/磁盘这三个数字, 其余节点原样留着 —— 省掉每秒几百个节点的
+// 创建与属性比对, 也不会把滚动位置、悬停和选中状态每秒冲掉一次。
+let lastTableSig = '';
+let lastHistorySig = '';
+
+function tableSig(s) {
+  const tasks = (s.tasks || []).map((t) => [
+    t.rid, t.secWatch, t.name, t.dispName, t.titleFilter, t.hours, t.state, t.live,
+    t.paused, t.monitorPaused, t.manualStopped, t.error, t.notice, t.pollFails, t.title,
+    t.parts, t.companyId,
+  ]);
+  return JSON.stringify([tasks, s.writing, s.companies, s.ungroupedCollapsed]);
+}
+
+function historySig(s) {
+  return JSON.stringify((s.history || []).map((h) => [
+    h.at, h.rid, h.nickname, h.title, h.secs, (h.files || []).length, h.missing, h.status, h.error,
+  ]));
+}
+
+// 只改会变的数字: 时长、大小、磁盘剩余
+function tickNumbers() {
+  if (!state || !state.tasks) return;
+  const di = $('diskInfo');
+  if (di) {
+    di.textContent = state.diskFreeGB === null || state.diskFreeGB === undefined
+      ? '磁盘剩余 —'
+      : `磁盘剩余 ${state.diskFreeGB} GB`;
+  }
+  const tb = $('tbody');
+  if (!tb) return;
+  const rows = new Map();
+  for (const tr of tb.children) if (tr.dataset && tr.dataset.key) rows.set(tr.dataset.key, tr);
+  for (const t of state.tasks) {
+    const tr = rows.get(String(t.rid));
+    if (!tr) continue;
+    const dur = tr.querySelector('.tick-dur');
+    if (dur) dur.textContent = t.state === 'recording' ? fmtDur(Date.now() - t.startedAt) : '-';
+    const size = tr.querySelector('.tick-size');
+    if (size) size.textContent = t.state === 'recording' ? fmtBytes(t.bytes) : '-';
+  }
+}
+
+function renderSmart() {
+  if (!state || !state.tasks) return;
+  const sig = tableSig(state);
+  if (sig === lastTableSig) { tickNumbers(); return; }
+  lastTableSig = sig;
+  render();
+}
+
+function renderHistorySmart() {
+  const sig = historySig(state || {});
+  if (sig === lastHistorySig) return;
+  lastHistorySig = sig;
+  renderHistory();
+}
+
 // ---- 主表渲染 ----
 function render() {
   if (!state || !state.tasks) return;
@@ -164,10 +223,15 @@ function render() {
     tdTitle.title = t.title || '';
 
     const tdDur = document.createElement('td');
+    tdDur.className = 'tick-dur';
     tdDur.textContent = t.state === 'recording' ? fmtDur(Date.now() - t.startedAt) : '-';
 
     const tdSize = document.createElement('td');
-    tdSize.textContent = t.state === 'recording' ? fmtBytes(t.bytes) : '-';
+    // 大小文字单独放一层, 秒级刷新时只改这个 span, 不会把下面的"分片N"一起冲掉
+    const sizeText = document.createElement('span');
+    sizeText.className = 'tick-size';
+    sizeText.textContent = t.state === 'recording' ? fmtBytes(t.bytes) : '-';
+    tdSize.appendChild(sizeText);
     if (t.parts > 1) {
       const pd = document.createElement('div');
       pd.className = 'sub';
@@ -788,7 +852,7 @@ $('roomConfigForm').onsubmit = safe(async (event) => {
 // ---- 初始化 ----
 initCompanies();
 let lastStateAt=0,stateFetching=false;
-function acceptState(s){if(!s||s.ok===false)throw Error(s?.error||'状态尚未就绪');lastStateAt=Date.now();state=s;render();renderPost();renderHistory();}
+function acceptState(s){if(!s||s.ok===false)throw Error(s?.error||'状态尚未就绪');lastStateAt=Date.now();state=s;renderSmart();renderPost();renderHistorySmart();}
 // 平台相关文案: macOS 的托盘位于菜单栏, 不叫"托盘"
 (function applyPlatformText(){
   const p = window.platformInfo || {};
@@ -807,4 +871,4 @@ setInterval(safe(async()=>{
   catch(error){if($('postUpdated'))$('postUpdated').textContent=error.message;}
   finally{clearTimeout(timer);stateFetching=false;}
 },'stateReconnect'),5000);
-setInterval(safe(() => { render(); renderPost(); }, 'tick'), 1000);
+setInterval(safe(() => { renderSmart(); renderPost(); }, 'tick'), 1000);
