@@ -64,6 +64,9 @@ class Recorder {
     this.notices = [];
     this.emptyParts = new Set(); // confirmed failed attempts with no recorded bytes
     this._openParts=new Set();this._closedParts=new Set();
+    // 各分片已写字节数缓存: 看门狗每秒本来就要 stat 当前分片(判停滞), 顺手记下来,
+    // 界面每秒取 totalBytes 就不必再对外置盘上每个分片各做一次 stat。
+    this._partBytes = new Map();
     this.stallTimeoutMs = 15000;
   }
 
@@ -147,6 +150,7 @@ class Recorder {
     this.watchdog = setInterval(() => {
       if (this.stopped || this.paused || this.rotating || this.proc !== child) return;
       const size = this._sizeOf(out);
+      this._partBytes.set(part, size);
       if (size > bytes) { bytes = size; lastGrowth = Date.now(); if(size>1024)this.lastProgressAt=lastGrowth; }
       else if (Date.now() - lastGrowth >= this.stallTimeoutMs) {
         log.warn('[rec] 拉流停止增长, 结束卡住的进程以便续录');
@@ -161,6 +165,7 @@ class Recorder {
 
   _onExit(code, part = this.part) {
     const size = this._sizeOf(this.flvPath(part));
+    this._partBytes.set(part, size);
     if (size === 0) this.emptyParts.add(part);
     this.checkpoint();
     log.info(`[rec] ffmpeg 退出 code=${code} part${this.part} ${(size / 1048576).toFixed(1)}MB`);
@@ -218,9 +223,22 @@ class Recorder {
     return true;
   }
 
-  totalBytes() {
+  /**
+   * 已录制总字节。
+   * 默认读看门狗维护的缓存, 供界面每秒取值; 收尾记账等需要精确值的场景传
+   * {fresh:true} 真去查盘(缓存最多滞后 1 秒, 而 remux 之后 FLV 会被删掉)。
+   */
+  totalBytes({ fresh = false } = {}) {
     let s = 0;
-    for (let i = 1; i <= this.part; i++) s += this._sizeOf(this.flvPath(i));
+    for (let i = 1; i <= this.part; i++) {
+      if (!fresh) {
+        const cached = this._partBytes.get(i);
+        if (typeof cached === 'number') { s += cached; continue; }
+      }
+      const size = this._sizeOf(this.flvPath(i));
+      this._partBytes.set(i, size);
+      s += size;
+    }
     return s;
   }
 
