@@ -11,8 +11,6 @@ const CONFIG_PATH = path.join(ROOT, 'config.json');
 
 const DEFAULT = {
   watchlist: [], // [{ rid, secUid?, name?, maxSec?, titleFilter?, hours? }]
-  companies: [],
-  ungroupedCollapsed: false,
   settings: {
     pollIntervalSec: 3,
     outputDir: 'recordings',
@@ -109,7 +107,10 @@ function mergeConfig(c,recovered,{noSave=false}={}){
   };
   if(!Array.isArray(merged.watchlist))merged.watchlist=[];
   merged.watchlist=merged.watchlist.filter(w=>w&&typeof w==='object'&&!Array.isArray(w));
-  merged.companies=require('./companies').normalizeCompanies(merged.companies);
+  // 公司分组功能已移除: 清掉旧配置里的残留字段, 下次保存时自然写回干净配置
+  delete merged.companies;
+  delete merged.ungroupedCollapsed;
+  for(const w of merged.watchlist)delete w.companyId;
   const ranges={pollIntervalSec:[1,10],minFreeGB:[0,500],maxConcurrentRecordings:[1,20],minSizeMB:[0,100000],keepDays:[0,3650]};
   for(const [key,[min,max]] of Object.entries(ranges)){
     const n=Number(merged.settings[key]);merged.settings[key]=Number.isFinite(n)?Math.max(min,Math.min(max,n)):DEFAULT.settings[key];
@@ -135,7 +136,7 @@ function mergeConfig(c,recovered,{noSave=false}={}){
       if (!cur) { best.set(k, w); continue; }
       // 字段级合并: 逐字段非空优先(整体 spread 会让空串覆盖有效值)
       const item = { ...cur };
-      for (const f of ['rid', 'secUid', 'name', 'nickname', 'titleFilter', 'hours', 'maxSec', 'companyId']) {
+      for (const f of ['rid', 'secUid', 'name', 'nickname', 'titleFilter', 'hours', 'maxSec']) {
         const v = item[f];
         if (v === undefined || v === '' || v === 0) {
           const nv = w[f];

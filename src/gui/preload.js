@@ -11,7 +11,6 @@ contextBridge.exposeInMainWorld('platformInfo', {
 
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('state:get'),
-  companyAction: (action,data) => ipcRenderer.invoke('company:action',action,data),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   addStreamer: (input, name, mode) => ipcRenderer.invoke('streamer:add', input, name, mode),
   removeStreamer: (rid) => ipcRenderer.invoke('streamer:remove', rid),

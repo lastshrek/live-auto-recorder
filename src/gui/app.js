@@ -102,9 +102,10 @@ function tableSig(s) {
   const tasks = (s.tasks || []).map((t) => [
     t.rid, t.secWatch, t.name, t.dispName, t.titleFilter, t.hours, t.state, t.live,
     t.paused, t.monitorPaused, t.manualStopped, t.error, t.notice, t.pollFails, t.title,
-    t.parts, t.companyId,
+    t.parts,
   ]);
-  return JSON.stringify([tasks, s.writing, s.companies, s.ungroupedCollapsed]);
+  // 搜索词/筛选值也算结构的一部分: 变了必须重算哪些行可见
+  return JSON.stringify([tasks, s.writing, $('listSearch').value, $('listStatus').value]);
 }
 
 function historySig(s) {
@@ -151,6 +152,51 @@ function renderHistorySmart() {
   renderHistory();
 }
 
+// ---- 列表筛选(搜索 + 状态) ----
+function rowMatches(t) {
+  const query = ($('listSearch').value || '').trim().toLocaleLowerCase();
+  const status = $('listStatus').value;
+  const hit = !query || [t.dispName, t.name, t.rid, t.title].some((v) => String(v || '').toLocaleLowerCase().includes(query));
+  if (!hit) return false;
+  if (status === 'recording') return t.state === 'recording';
+  if (status === 'profile') return !!t.secWatch;
+  if (status === 'warning') return !!(t.error || t.pollFails > 5);
+  if (status === 'offline') return !t.secWatch && !t.live && t.state === 'idle';
+  return true;
+}
+function applyListFilter(body) {
+  const total = state.tasks.length;
+  const rec = state.tasks.filter((t) => t.state === 'recording').length;
+  let visible = 0;
+  for (const t of state.tasks) {
+    const row = body.querySelector(`tr[data-key="${CSS.escape(String(t.rid))}"]`);
+    if (!row) continue;
+    const ok = rowMatches(t);
+    row.hidden = !ok;
+    if (ok) visible++;
+  }
+  $('listTotals').textContent = total
+    ? `${total} 位主播 · ${rec} 位录制中` + (visible !== total ? ` · 显示 ${visible}` : '')
+    : '';
+  let empty = body.querySelector('tr[data-key="no-matches"]');
+  if (total && !visible) {
+    if (!empty) {
+      empty = document.createElement('tr');
+      empty.dataset.key = 'no-matches';
+      const td = document.createElement('td');
+      td.className = 'sub';
+      td.colSpan = 8;
+      td.textContent = '没有匹配的主播，请调整搜索词或筛选条件。';
+      empty.appendChild(td);
+    }
+    body.appendChild(empty);
+  } else if (empty) empty.remove();
+}
+function initListFilter() {
+  $('listSearch').oninput = safe(render, 'list-search');
+  $('listStatus').onchange = safe(render, 'list-filter');
+}
+
 // ---- 主表渲染 ----
 function render() {
   if (!state || !state.tasks) return;
@@ -177,7 +223,6 @@ function render() {
     const nameMain = document.createElement('div');
     nameMain.className = 'display-name';
     nameMain.textContent = displayName;
-    addCompanyRowControls(tdName,t);
     tdName.appendChild(nameMain);
     const subs = [];
     if (t.name && t.name !== displayName) subs.push('备注:' + t.name);
@@ -315,9 +360,8 @@ function render() {
     tr.append(tdName, tdRid, tdState, tdTitle, tdDur, tdSize, tdOps);
     tb.appendChild(tr);
   }
-  groupCompanyRows(tb);
+  applyListFilter(tb);
   reconcile($('tbody'), tb);
-  syncCompanyChecks();
 }
 
 // ---- 后处理任务面板(可折叠, 逐项进度) ----
@@ -858,7 +902,7 @@ $('roomConfigForm').onsubmit = safe(async (event) => {
 }, 'configRoom');
 
 // ---- 初始化 ----
-initCompanies();
+initListFilter();
 let lastStateAt=0,stateFetching=false;
 function acceptState(s){if(!s||s.ok===false)throw Error(s?.error||'状态尚未就绪');lastStateAt=Date.now();state=s;renderSmart();renderPost();renderHistorySmart();}
 // 平台相关文案: macOS 的托盘位于菜单栏, 不叫"托盘"

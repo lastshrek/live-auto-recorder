@@ -140,7 +140,7 @@ test('shutdown does not hang on a job waiting for disk space',async()=>{
 });
 test('missing main configuration restores the valid backup rather than clearing watches',()=>{
  const dir=fs.mkdtempSync(path.join(root,'cfg-'));fs.writeFileSync(path.join(dir,'config.json.bak'),JSON.stringify({watchlist:[{rid:'123456'}],settings:{segment:'0'}}));const module={exports:{}};
- vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/core/store.js'),'utf8'),{require:id=>id==='./companies'?require('../src/core/companies'):id==='./quiet-hours'?require('../src/core/quiet-hours'):id==='../util/atomic-json'?require('../src/util/atomic-json'):require(id),module,exports:module.exports,__dirname:path.join(dir,'src/core'),structuredClone,process,console});
+ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/core/store.js'),'utf8'),{require:id=>id==='./quiet-hours'?require('../src/core/quiet-hours'):id==='../util/atomic-json'?require('../src/util/atomic-json'):require(id),module,exports:module.exports,__dirname:path.join(dir,'src/core'),structuredClone,process,console});
  assert.equal(module.exports.load().watchlist[0].rid,'123456');assert.equal(JSON.parse(fs.readFileSync(path.join(dir,'config.json'))).watchlist.length,1);
 });
 test('large-file inspection runs outside the main event loop',async()=>{

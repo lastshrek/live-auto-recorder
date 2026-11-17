@@ -250,14 +250,6 @@ if (!app.requestSingleInstanceLock()) {
 
   H('state:get', () => (sched ? sched.snapshot() : null));
 
-  H('company:action', (_e, action, data) => {
-    const next=require('./core/companies').updateCompanies(cfg,action,data||{});
-    save(next);
-    cfg=next;
-    sched.setConfig(cfg);
-    return {ok:true};
-  });
-
   H('streamer:add', async (_e, input, name, mode) => {
     const wantProfile = String(mode || 'fast') === 'profile';
     try {

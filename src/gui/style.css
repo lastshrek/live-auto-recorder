@@ -57,26 +57,11 @@ button.mini { padding: 4px 9px; font-size: 12px; border-radius: 5px; }
 .msg.ok { color: var(--ok); }
 
 main { flex: 1; overflow: auto; padding: 0 20px; }
-.company-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:16px 0 4px; }
-.company-toolbar h2 { font-size:16px; margin-right:auto; }
-.company-toolbar h2 .sub { font-size:12px; color:var(--dim); margin-left:12px; font-weight:400; }
-.company-toolbar input,.company-toolbar select,.company-dialog input,.company-dialog select { color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:0; }
-.company-toolbar input { flex:1; min-width:180px; max-width:340px; }
-.company-group td { background:var(--panel); padding:14px 12px; border-top:12px solid var(--bg); }
-.company-group-line { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-.company-toggle { font-size:15px!important; font-weight:600; border-color:transparent; background:transparent; text-align:left; }
-.company-group-actions { margin-left:auto; display:flex; gap:7px; }
-.company-bulk { display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:#1c2540; padding:10px; margin-top:10px; border-radius:7px; }
-.company-check { float:left; margin:6px 8px 0 0; accent-color:var(--accent); }
-.company-row-move { display:block; float:right; margin-left:8px; color:var(--dim); font-size:11px!important; }
-.company-dialog { margin:auto; width:440px; max-width:calc(100vw - 32px); max-height:calc(100vh - 32px); overflow:auto; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:24px; }
-.company-dialog::backdrop { background:#0009; }
-.company-dialog form { display:flex; flex-direction:column; gap:18px; }
-.company-dialog h2 { font-size:18px; }
-.company-dialog label { display:flex; flex-direction:column; gap:8px; }
-.company-dialog .sub { color:var(--dim); font-size:12px; }
-.company-dialog-actions { display:flex; gap:10px; justify-content:flex-end; }
-#companyDialogError { color:#ff918a; white-space:pre-wrap; }
+.list-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:16px 0 4px; }
+.list-toolbar h2 { font-size:16px; margin-right:auto; }
+.list-toolbar h2 .sub { font-size:12px; color:var(--dim); margin-left:12px; font-weight:400; }
+.list-toolbar input,.list-toolbar select { color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:0; }
+.list-toolbar input { flex:1; min-width:180px; max-width:340px; }
 button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 table { width: 100%; border-collapse: collapse; margin-top: 12px; }
 th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -202,7 +187,7 @@ footer { padding: 10px 20px; color: var(--dim); font-size: 12px; border-top: 1px
 .layout-split:hover::after,.layout-split:focus-visible::after { width:76px; background:#8ca5ff; }
 .layout-split:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .layout-workspace main.layout-collapsed { flex:none; min-height:0; height:54px; overflow:hidden; }
-main.layout-collapsed .company-toolbar > :not(h2):not(#monitorCollapse) { display:none; }
+main.layout-collapsed .list-toolbar > :not(h2):not(#monitorCollapse) { display:none; }
 .layout-workspace .history.layout-collapsed { height:48px!important; overflow:hidden; padding-top:0; padding-bottom:0; }
 .history.layout-collapsed > :not(.history-head) { display:none; }
 .history-head { gap:10px; }
@@ -247,15 +232,11 @@ thead th { position: sticky; top: 0; z-index: 2; background: var(--bg); box-shad
 /* ---- 行状态: 一眼看出谁在录/在播/要留意 ---- */
 tr.row-rec > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 tr.row-live > td:first-child { box-shadow: inset 3px 0 0 #4a6cd4; }
-tbody tr:not(.company-group):hover > td { background: rgba(255,255,255,.025); }
+tbody tr:hover > td { background: rgba(255,255,255,.025); }
 
-/* ---- 主播列: 复选框与"调整公司"改为悬停出现, 名字不再被挤成竖排 ---- */
-#tbl td:first-child { position: relative; padding-left: 34px; }
-#tbl th:first-child { padding-left: 34px; }
-.company-check { position: absolute; left: 12px; top: 13px; float: none; margin: 0; opacity: 0; transition: opacity .15s; }
-tr:hover .company-check, .company-check:focus-visible, .company-check:checked { opacity: 1; }
-.company-row-move { position: absolute; right: 10px; top: 12px; float: none; margin: 0; opacity: 0; transition: opacity .15s; }
-tr:hover .company-row-move, .company-row-move:focus-visible { opacity: 1; }
+/* ---- 主播列: 昵称单行省略, 不再被挤成竖排 ---- */
+#tbl td:first-child { position: relative; padding-left: 14px; }
+#tbl th:first-child { padding-left: 14px; }
 .display-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tbl td:first-child .sub { margin-top: 2px; }
 
@@ -269,12 +250,6 @@ tr:hover .ops .mini, .ops .mini:focus-visible, .ops .mini.primary { opacity: 1; 
 .history th:nth-child(4), .history th:nth-child(5),
 .history td:nth-child(4), .history td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ---- 工具条降噪: 全部收起/展开弱化为文字按钮 ---- */
-#companyCollapse, #companyExpand {
-  padding: 4px 9px; font-size: 12px; border-radius: 5px;
-  background: transparent; border-color: transparent; color: var(--dim);
-}
-#companyCollapse:hover, #companyExpand:hover { color: var(--text); border-color: var(--line); }
 
 /* ---- 顶栏更紧凑, 磁盘余量做成胶囊 ---- */
 header { padding: 10px 20px; }

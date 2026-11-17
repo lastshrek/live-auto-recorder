@@ -1,5 +1,4 @@
 const {app,BrowserWindow,ipcMain}=require('electron');
-ipcMain.handle('audit-company',(_e,cfg,action,data)=>require('../../src/core/companies').updateCompanies(cfg,action,data));
 const fs=require('node:fs'),path=require('node:path');
 const results=[];let w;
 const evaluate=code=>w.webContents.executeJavaScript(code);
@@ -103,22 +102,18 @@ app.whenReady().then(async()=>{
   window.auditMode='fail';document.getElementById('btnLog').click();await new Promise(r=>setTimeout(r,30));if(!document.getElementById('logBox').textContent.includes('注入后台失败'))return false;
   document.getElementById('btnCloseLog').click();return getComputedStyle(document.getElementById('logPanel')).display==='none';
  `);
- await check('company grouping saves, moves a recording, folds, searches and survives fresh snapshots',`
-  window.auditMode='ok';document.getElementById('companyCreate').click();document.getElementById('companyName').value='测试传媒';document.getElementById('companyForm').requestSubmit();await new Promise(r=>setTimeout(r,60));
-  const company=window.auditState.companies[0];if(!company||document.getElementById('companyDialog').open)return false;
-  document.querySelector('[data-key="company-move"]').click();document.getElementById('companyTarget').value=company.id;document.getElementById('companyForm').requestSubmit();await new Promise(r=>setTimeout(r,60));
-  const row=document.querySelector('tr[data-key="123456"]');if(window.auditState.tasks[0].companyId!==company.id||window.auditState.tasks[0].state!=='recording')return false;
-  document.querySelector('tr[data-key="company:'+company.id+'"] [data-key="toggle"]').click();await new Promise(r=>setTimeout(r,60));window.auditEmit();if(!row.hidden)return false;
-  document.getElementById('companySearch').value='测试主播';document.getElementById('companySearch').dispatchEvent(new Event('input'));if(row.hidden)return false;
-  document.getElementById('companySearch').value='';document.getElementById('companySearch').dispatchEvent(new Event('input'));if(!row.hidden)return false;
-  return document.querySelector('tr[data-key="company:'+company.id+'"] [aria-expanded="false"]')!==null;
- `);
- await check('company batch move and delete preserve recording buttons and surface failed saves',`
-  window.auditMode='ok';document.getElementById('companyExpand').click();await new Promise(r=>setTimeout(r,60));document.querySelector('.company-check').click();document.getElementById('companyMoveSelected').click();document.getElementById('companyTarget').value='none';
-  window.auditMode='fail';document.getElementById('companyForm').requestSubmit();await new Promise(r=>setTimeout(r,60));if(!document.getElementById('companyDialog').open||!document.getElementById('companyDialogError').textContent.includes('注入后台失败'))return false;
-  window.auditMode='ok';document.getElementById('companyForm').requestSubmit();await new Promise(r=>setTimeout(r,60));if(window.auditState.tasks[0].companyId)return false;
-  document.querySelector('.company-group [data-key="delete"]').click();document.getElementById('companyForm').requestSubmit();await new Promise(r=>setTimeout(r,60));
-  return window.auditState.companies.length===0&&window.auditState.tasks.length===1&&!!document.querySelector('[data-key="pause"],[data-key="resume"]');
+ await check('list search and status filter hide non-matching rows without losing the recording controls',`
+  window.auditMode='ok';const rowOf=()=>document.querySelector('tr[data-key="123456"]');
+  const type=(id,value,ev)=>{const el=document.getElementById(id);el.value=value;el.dispatchEvent(new Event(ev));};
+  type('listSearch','测试主播','input');await new Promise(r=>setTimeout(r,60));if(rowOf().hidden)return false;
+  if(!document.getElementById('listTotals').textContent.includes('1 位主播'))return false;
+  type('listSearch','不存在的人','input');await new Promise(r=>setTimeout(r,60));if(!rowOf().hidden)return false;
+  if(!document.querySelector('tr[data-key="no-matches"]'))return false;
+  type('listSearch','','input');await new Promise(r=>setTimeout(r,60));if(rowOf().hidden)return false;
+  type('listStatus','profile','change');await new Promise(r=>setTimeout(r,60));const byProfile=rowOf().hidden;
+  type('listStatus','recording','change');await new Promise(r=>setTimeout(r,60));const byRecording=!rowOf().hidden;
+  type('listStatus','all','change');await new Promise(r=>setTimeout(r,60));
+  return byProfile&&byRecording&&!!document.querySelector('[data-key="pause"],[data-key="resume"]');
  `);
  w.setSize(940,620);w.webContents.setZoomFactor(1.5);
  await check('quiet settings remain scrollable and Save stays visible on a small zoomed window',`

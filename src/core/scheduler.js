@@ -349,14 +349,13 @@ class Scheduler {
         const t = this.tasks.get(key);
         t.item.name = w.name || '';
         t.item.nickname = w.nickname || '';
-        t.item.companyId = w.companyId || '';
         t.item.titleFilter = String(w.titleFilter || '');
         t.item.hours = String(w.hours || '');
         t.item.maxSec = +w.maxSec || 0;
         if(t.monitorPaused!==!!w.monitorPaused){t.monitorPaused=!!w.monitorPaused;t.monitorVersion=(t.monitorVersion||0)+1;}
         continue;
       }
-      const item = { rid, secUid, companyId: w.companyId || '', name: w.name || '', nickname: w.nickname || '', titleFilter: String(w.titleFilter || ''), hours: String(w.hours || ''), maxSec: +w.maxSec || 0 };
+      const item = { rid, secUid, name: w.name || '', nickname: w.nickname || '', titleFilter: String(w.titleFilter || ''), hours: String(w.hours || ''), maxSec: +w.maxSec || 0 };
       const task = { rid, secUid, key, item, monitorPaused:!!w.monitorPaused, monitorVersion:0, state: 'idle', offCount: 0, paused: false, rec: null, lastInfo: null, lastPollAt: 0, pollFails: 0, firstLiveAt: 0, stop: false };
       this.tasks.set(key, task);
       const delay = this.tasks.size * 400; // 错峰
@@ -822,7 +821,6 @@ class Scheduler {
         rid: t.rid || t.secUid,
         secWatch: !t.rid,
         identity: t.secUid || t.rid,
-        companyId: t.item.companyId || '',
         name: t.item.name || '',
         dispName: (t.lastInfo && t.lastInfo.nickname) || t.item.nickname || t.item.name || '',
         titleFilter: t.item.titleFilter || '',
@@ -849,8 +847,6 @@ class Scheduler {
       // 否则用户点了「浏览…」选完目录、保存时才被拒，白操作一场。
       writing: this.activeWriteCount > 0,
       settings: this.cfg.settings,
-      companies: this.cfg.companies || [],
-      ungroupedCollapsed: !!this.cfg.ungroupedCollapsed,
       recoveryError:this.recovery?.store.error||'',
     };
   }

@@ -49,7 +49,7 @@ test('atomic JSON replace failure preserves previous data and cleans its tempora
 
 function isolatedStore(name){
  const dir=fs.mkdtempSync(path.join(root,name)),vm=require('node:vm');const module={exports:{}};
- vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/core/store.js'),'utf8'),{require:id=>id==='./companies'?require('../src/core/companies'):id==='./quiet-hours'?require('../src/core/quiet-hours'):id==='../util/atomic-json'?require('../src/util/atomic-json'):require(id),module,exports:module.exports,__dirname:path.join(dir,'src','core'),structuredClone,process,console});
+ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../src/core/store.js'),'utf8'),{require:id=>id==='./quiet-hours'?require('../src/core/quiet-hours'):id==='../util/atomic-json'?require('../src/util/atomic-json'):require(id),module,exports:module.exports,__dirname:path.join(dir,'src','core'),structuredClone,process,console});
  return {dir,store:module.exports};
 }
 test('new configuration saves whole sessions and retains short recordings',()=>{
@@ -209,7 +209,7 @@ test('a successful room nickname is persisted and offline responses cannot erase
 
 test('profile promotion saves before switching, preserves all metadata, and restarts in fast mode', async () => {
   const s=scheduler(),secUid='MS4wLjABAAAAabcdefghijklmno';
-  const original={rid:'',secUid,name:'备注',nickname:'主播',titleFilter:'游戏',hours:'00:00-23:59',maxSec:60,companyId:'company-a'};
+  const original={rid:'',secUid,name:'备注',nickname:'主播',titleFilter:'游戏',hours:'00:00-23:59',maxSec:60};
   const t={...task(),rid:'',secUid,key:'sec:'+secUid,item:{...original}};
   s.cfg.watchlist=[original];s.tasks.set(t.key,t);let scans=0,closed=0,saved;
   s.sess={_profileDomScan:async()=>{scans++;return '123456';},closeProfileWindow(){closed++;},getRoomInfo:async()=>({live:false,nickname:'主播'})};
@@ -234,14 +234,14 @@ test('failed profile promotion save retains the original config and retryable pr
 });
 
 test('profile promotion into an existing recording keeps one task without interrupting it', async () => {
-  const s=scheduler(),secUid='MS4wLjABAAAAabcdefghijklmno',existing={rid:'123456',name:'原备注'},original={rid:'',secUid,nickname:'主播',companyId:'company-a'};
+  const s=scheduler(),secUid='MS4wLjABAAAAabcdefghijklmno',existing={rid:'123456',name:'原备注'},original={rid:'',secUid,nickname:'主播'};
   const profile={...task(),rid:'',secUid,key:'sec:'+secUid,item:original},recording={...task(),state:'recording',item:{...existing},rec:{}};
   s.cfg.watchlist=[original,existing];s.tasks.set(profile.key,profile);s.tasks.set(recording.key,recording);
   s.sess={_profileDomScan:async()=> '123456',closeProfileWindow(){}};
   const store=require('../src/core/store'),save=store.save;store.save=()=>{};
   try{await s._poll(profile);}finally{store.save=save;}
   assert.equal(s.tasks.size,1);assert.equal(s.tasks.get('123456'),recording);assert.equal(recording.state,'recording');
-  assert.equal(s.cfg.watchlist.length,1);assert.equal(s.cfg.watchlist[0].name,'原备注');assert.equal(s.cfg.watchlist[0].secUid,secUid);assert.equal(s.cfg.watchlist[0].companyId,'company-a');
+  assert.equal(s.cfg.watchlist.length,1);assert.equal(s.cfg.watchlist[0].name,'原备注');assert.equal(s.cfg.watchlist[0].secUid,secUid);
 });
 test('page evaluation times out instead of waiting forever for a loading page', async () => {
   const wc={isDestroyed:()=>false,debugger:{isAttached:()=>true,sendCommand:()=>new Promise(()=>{})}};

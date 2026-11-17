@@ -47,14 +47,12 @@
   </section>
 
   <main>
-    <div class="company-toolbar">
-      <h2>主播监控 <span id="companyTotals" class="sub"></span></h2>
-      <button id="companyCreate" class="primary">+ 新建公司</button>
-      <input id="companySearch" aria-label="搜索主播、房间号或公司" placeholder="搜索主播、房间号或公司" />
-      <select id="companyStatus" aria-label="按状态筛选"><option value="all">全部状态</option><option value="recording">录制中</option><option value="profile">主页监控</option><option value="warning">需要留意</option><option value="offline">离线</option></select>
-      <button id="companyCollapse">全部收起</button><button id="companyExpand">全部展开</button><button id="monitorCollapse" class="mini" aria-expanded="true">收起区域</button>
+    <div class="list-toolbar">
+      <h2>主播监控 <span id="listTotals" class="sub"></span></h2>
+      <input id="listSearch" aria-label="搜索主播、房间号或标题" placeholder="搜索主播、房间号或标题" />
+      <select id="listStatus" aria-label="按状态筛选"><option value="all">全部状态</option><option value="recording">录制中</option><option value="profile">主页监控</option><option value="warning">需要留意</option><option value="offline">离线</option></select>
+      <button id="monitorCollapse" class="mini" aria-expanded="true">收起区域</button>
     </div>
-    <div id="companyBulk" class="company-bulk" hidden><span id="companySelected"></span><button id="companyMoveSelected">移入公司</button><button id="companyClearSelected">取消选择</button></div>
     <table id="tbl">
       <thead>
         <tr>
@@ -181,15 +179,6 @@
     <div id="recordingsEntries" class="recordings-entries"></div>
   </dialog>
   <footer id="appFooter">关闭窗口 = 后台继续录制 · 退出请用托盘图标 → 退出</footer>
-  <dialog id="companyDialog" class="company-dialog" aria-labelledby="companyDialogTitle">
-    <form id="companyForm"><h2 id="companyDialogTitle"></h2>
-      <label id="companyNameLabel">公司名称<input id="companyName" maxlength="60" autocomplete="off" /></label>
-      <label id="companyTargetLabel">所属公司<select id="companyTarget"></select></label>
-      <p id="companyDialogHint" class="sub"></p><p id="companyDialogError" role="alert"></p>
-      <div class="company-dialog-actions"><button type="button" id="companyCancel">取消</button><button type="submit" id="companySave" class="primary">保存</button></div>
-    </form>
-  </dialog>
-  <script src="companies.js"></script>
   <script src="layout.js"></script>
   <script src="app.js"></script>
 </body>
