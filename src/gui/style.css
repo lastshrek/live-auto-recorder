@@ -235,3 +235,63 @@ main.layout-collapsed .company-toolbar > :not(h2):not(#monitorCollapse) { displa
 .dir-row input[type=text]:disabled,
 .dir-row button:disabled { opacity:.5; cursor:not-allowed; }
 .dir-row input[type=text]:disabled { pointer-events:none; }
+
+/* ============================================================
+   首页视觉优化(2026-11): 层次、降噪、信息对齐
+   原则: 只加覆盖层与少量类名, 不动任何渲染逻辑
+   ============================================================ */
+
+/* ---- 表头吸顶: 列表滚动时列名常驻 ---- */
+thead th { position: sticky; top: 0; z-index: 2; background: var(--bg); box-shadow: 0 1px 0 var(--line); }
+
+/* ---- 行状态: 一眼看出谁在录/在播/要留意 ---- */
+tr.row-rec > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+tr.row-live > td:first-child { box-shadow: inset 3px 0 0 #4a6cd4; }
+tbody tr:not(.company-group):hover > td { background: rgba(255,255,255,.025); }
+
+/* ---- 主播列: 复选框与"调整公司"改为悬停出现, 名字不再被挤成竖排 ---- */
+#tbl td:first-child { position: relative; padding-left: 34px; }
+#tbl th:first-child { padding-left: 34px; }
+.company-check { position: absolute; left: 12px; top: 13px; float: none; margin: 0; opacity: 0; transition: opacity .15s; }
+tr:hover .company-check, .company-check:focus-visible, .company-check:checked { opacity: 1; }
+.company-row-move { position: absolute; right: 10px; top: 12px; float: none; margin: 0; opacity: 0; transition: opacity .15s; }
+tr:hover .company-row-move, .company-row-move:focus-visible { opacity: 1; }
+.display-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tbl td:first-child .sub { margin-top: 2px; }
+
+/* ---- 操作列降噪: 次要按钮悬停行时才全亮 ---- */
+.ops .mini { opacity: .5; transition: opacity .15s; }
+tr:hover .ops .mini, .ops .mini:focus-visible, .ops .mini.primary { opacity: 1; }
+
+/* ---- 数字列右对齐 + 等宽数字 ---- */
+#tbl th:nth-child(5), #tbl th:nth-child(6),
+#tbl td:nth-child(5), #tbl td:nth-child(6) { text-align: right; font-variant-numeric: tabular-nums; }
+.history th:nth-child(4), .history th:nth-child(5),
+.history td:nth-child(4), .history td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- 工具条降噪: 全部收起/展开弱化为文字按钮 ---- */
+#companyCollapse, #companyExpand {
+  padding: 4px 9px; font-size: 12px; border-radius: 5px;
+  background: transparent; border-color: transparent; color: var(--dim);
+}
+#companyCollapse:hover, #companyExpand:hover { color: var(--text); border-color: var(--line); }
+
+/* ---- 顶栏更紧凑, 磁盘余量做成胶囊 ---- */
+header { padding: 10px 20px; }
+.brand h1 { font-size: 16px; }
+.addbar { padding: 10px 20px; }
+.disk { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px 10px; font-size: 12px; margin-right: 2px; }
+
+/* ---- 标题列放宽一点 ---- */
+.title-cell { max-width: 320px; }
+
+/* ---- 细滚动条, 不再是默认的宽灰条 ---- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #3a4356; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---- 窄窗口: 按钮文字不折行、数字不折行 ---- */
+.ops { flex-wrap: wrap; }
+.ops .mini { white-space: nowrap; }
+#tbl td:nth-child(5), #tbl td:nth-child(6) { white-space: nowrap; }

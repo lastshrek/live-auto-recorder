@@ -167,11 +167,15 @@ function render() {
   for (const t of state.tasks) {
     const tr = document.createElement('tr');
     tr.dataset.key = String(t.rid);
+    // 行状态类: 录制中红条、在播蓝条, 配合 CSS 让"谁在录"一眼可见
+    if (t.state === 'recording') tr.classList.add('row-rec');
+    else if (t.live) tr.classList.add('row-live');
 
     const tdName = document.createElement('td');
     // 全部 textContent 构建: 主播昵称/备注是远端可控字符串, innerHTML 拼接可注入标签
     const displayName = t.dispName || (t.secWatch ? '待开播后识别' : '识别中…');
     const nameMain = document.createElement('div');
+    nameMain.className = 'display-name';
     nameMain.textContent = displayName;
     addCompanyRowControls(tdName,t);
     tdName.appendChild(nameMain);
