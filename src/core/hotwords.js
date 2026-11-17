@@ -164,11 +164,35 @@ function autoHotwords({ inputPath, history, roomId, nickname, limit = 4 } = {}) 
   return buildHotwords(sources, { limit });
 }
 
+/**
+ * 在基础热词（主播名等）之后追加球队热词，去重并限制总数。
+ *
+ * 基础热词优先：主播名是每场的核心专名，不能被球队词挤掉。
+ * 总数默认封顶 12：实测这个模型对热词敏感，堆太多会把字幕冲成热词串
+ * （见 buildHotwords 上方的记录）。球队词可在设置里单独开关与定量。
+ */
+function withTeamHotwords(base, { root, enabled = false, limit = 6, totalLimit = 12 } = {}) {
+  const { teamHotwords } = require('./team-hotwords');
+  const out = [];
+  const seen = new Set();
+  for (const w of String(base || '').split(',')) {
+    const t = w.trim();
+    if (t && !seen.has(t)) { seen.add(t); out.push(t); }
+  }
+  if (enabled) {
+    for (const w of teamHotwords({ root, limit })) {
+      if (!seen.has(w)) { seen.add(w); out.push(w); }
+    }
+  }
+  return out.slice(0, Math.max(1, totalLimit)).join(',');
+}
+
 module.exports = {
   wordsFromFilename,
   wordsFromHistory,
   buildHotwords,
   autoHotwords,
+  withTeamHotwords,
   worthKeeping,
   NOISE,
   GENERIC,

@@ -685,6 +685,8 @@ function openDrawer() {
   $('setNoSleep').checked = !!s.preventSleep;
   $('setAutoTranscribe').checked = !!s.autoTranscribe;
   $('setAsrLanguage').value = s.asrLanguage ?? 'Tianjin';
+  $('setTeamHotwords').checked = s.teamHotwords !== false;
+  $('setTeamHotwordsLimit').value = s.teamHotwordsLimit ?? 6;
   $('setUpload115').checked = !!s.upload115;
   $('setUpload115Keep').value = s.upload115RetentionDays ?? 7;
   $('setAutoStart').checked = !!s.autoStart;
@@ -742,6 +744,8 @@ $('btnSaveSettings').onclick = safe(async () => {
       preventSleep: $('setNoSleep').checked,
       autoTranscribe: $('setAutoTranscribe').checked,
       asrLanguage: $('setAsrLanguage').value,
+      teamHotwords: $('setTeamHotwords').checked,
+      teamHotwordsLimit: Math.max(0, Math.min(25, +$('setTeamHotwordsLimit').value || 0)),
       upload115: $('setUpload115').checked,
       upload115RetentionDays: +$('setUpload115Keep').value || 0,
       autoStart: $('setAutoStart').checked,

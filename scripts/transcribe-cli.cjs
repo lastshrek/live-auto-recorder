@@ -14,9 +14,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { transcribeFile, findPython, diagnose } = require('../src/core/transcribe');
-const { autoHotwords } = require('../src/core/hotwords');
+const { autoHotwords, withTeamHotwords } = require('../src/core/hotwords');
 const { loadConfig, VENV } = require('./setup-transcribe.cjs');
-const { normalizeAsrLanguage } = require('../src/core/store');
+const { normalizeAsrLanguage, ROOT } = require('../src/core/store');
 
 const VIDEO_EXT = /\.(mp4|mkv|flv|mov|webm|ts|m4v|avi|wav|mp3|m4a|aac|flac)$/i;
 
@@ -39,17 +39,19 @@ function parseArgs(argv) {
   return out;
 }
 
-function readConfiguredLanguage() {
-  // config.json 不存在/读不了就退回默认天津话，不让 CLI 因缺配置而失败
+function readSettings() {
+  // config.json 不存在/读不了就退回默认，不让 CLI 因缺配置而失败
   try {
-    const { ROOT } = require('../src/core/store');
     const cfgPath = path.join(ROOT, 'config.json');
-    if (!fs.existsSync(cfgPath)) return 'Tianjin';
-    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    return raw?.settings?.asrLanguage ?? 'Tianjin';
+    if (!fs.existsSync(cfgPath)) return {};
+    return JSON.parse(fs.readFileSync(cfgPath, 'utf8'))?.settings || {};
   } catch {
-    return 'Tianjin';
+    return {};
   }
+}
+
+function readConfiguredLanguage() {
+  return readSettings().asrLanguage ?? 'Tianjin';
 }
 
 function collectFiles(inputs, all) {
@@ -94,7 +96,8 @@ function fmtSize(bytes) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.inputs.length) {
-    console.log('用法: node scripts/transcribe-cli.cjs <文件或目录> [--all] [--hotwords "词1,词2"] [--language Tianjin|auto]');
+    console.log('用法: node scripts/transcribe-cli.cjs <文件或目录> [--all] [--hotwords "词1,词2"] [--language Tianjin|auto] [--no-auto-hotwords]');
+    console.log('球队热词默认随配置启用；--hotwords 显式给词时不再叠加。');
     console.log('\n示例:');
     console.log('  node scripts/transcribe-cli.cjs recordings/主播名/某场.mp4');
     console.log('  node scripts/transcribe-cli.cjs recordings/主播名 --all');
@@ -143,9 +146,18 @@ async function main() {
     const base = file.replace(/\.[^.]+$/, '');
     const st = fs.statSync(file);
 
-    // 用户显式给了就用用户的；否则从文件名 + 历史自动推导
-    const hotwords = args.hotwords
-      || (args.noAutoHotwords ? '' : autoHotwords({ inputPath: file, history }));
+    // 用户显式给了就用用户的（此时不叠加球队词）；否则从文件名 + 历史推导，
+    // 再按配置合并天津津门虎球队热词。
+    let hotwords = args.hotwords;
+    if (!hotwords) {
+      const base = args.noAutoHotwords ? '' : autoHotwords({ inputPath: file, history });
+      const s = readSettings();
+      hotwords = withTeamHotwords(base, {
+        root: ROOT,
+        enabled: s.teamHotwords !== false,
+        limit: s.teamHotwordsLimit ?? 6,
+      });
+    }
 
     process.stdout.write(`[${i + 1}/${files.length}] ${path.basename(file)} (${fmtSize(st.size)}) `);
 

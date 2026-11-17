@@ -261,11 +261,18 @@ class Scheduler {
       throw e;
     }
     const { transcribeFile } = require('./transcribe');
-    const { autoHotwords } = require('./hotwords');
+    const { autoHotwords, withTeamHotwords } = require('./hotwords');
     // 热词由文件名里的主播名推导，与 CLI 走同一套规则
     let history = null;
     try { history = this.history; } catch { /* 历史不可用只是热词少几个 */ }
-    const hotwords = autoHotwords({ inputPath: file, history, nickname: item.nickname });
+    const baseHotwords = autoHotwords({ inputPath: file, history, nickname: item.nickname });
+    // 天津津门虎球队热词：可选，默认少量，避免堆太多把字幕冲成热词串
+    const st = this.cfg.settings;
+    const hotwords = withTeamHotwords(baseHotwords, {
+      root: require('./store').ROOT,
+      enabled: st.teamHotwords !== false,
+      limit: st.teamHotwordsLimit ?? 6,
+    });
     return transcribeFile(file, {
       venvDir: rt.venvDir,
       modelDir: rt.modelDir,
@@ -878,6 +885,10 @@ class Scheduler {
     if (typeof patch.asrLanguage === 'string') {
       // 白名单校验在 store 里统一做：不相识的值退回天津话，避免任意字符串进识别 prompt
       s.asrLanguage = require('./store').normalizeAsrLanguage(patch.asrLanguage);
+    }
+    if (typeof patch.teamHotwords === 'boolean') s.teamHotwords = patch.teamHotwords;
+    if (Number.isFinite(+patch.teamHotwordsLimit)) {
+      s.teamHotwordsLimit = Math.min(25, Math.max(0, Math.round(+patch.teamHotwordsLimit)));
     }
     if (typeof patch.upload115 === 'boolean') s.upload115 = patch.upload115;
     if (Number.isFinite(+patch.upload115RetentionDays)) s.upload115RetentionDays = Math.min(365, Math.max(0, Math.round(+patch.upload115RetentionDays)));

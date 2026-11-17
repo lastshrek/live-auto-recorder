@@ -50,6 +50,10 @@ const DEFAULT = {
     // 转写语种/方言提示。Qwen3-ASR 用英文名，'Tianjin' 即天津话；
     // 空串表示交给模型自动判断。默认天津话：方言若不定向，容易被统一成普通话。
     asrLanguage: 'Tianjin',
+    // 天津津门虎球队热词：默认启用，只取最易识别错的少量核心词。
+    // 上限可调（0=关闭）；词表放在 <数据目录>/hotwords-team.txt 可自行增删。
+    teamHotwords: true,
+    teamHotwordsLimit: 6,
     upload115: false,      // 录完自动备份到 115(经本机 OpenList 的 WebDAV)
     upload115BaseUrl: 'http://127.0.0.1:5244/dav', // OpenList 的 WebDAV 入口
     upload115Mount: '115',         // OpenList 里的挂载路径(115 网盘的挂载点)
@@ -136,6 +140,12 @@ function mergeConfig(c,recovered,{noSave=false}={}){
   }
   for(const key of ['keepRaw','autoPartMerge','preventSleep','autoStart','postQuietEnabled'])if(typeof merged.settings[key]!=='boolean')merged.settings[key]=DEFAULT.settings[key];
   merged.settings.asrLanguage=normalizeAsrLanguage(merged.settings.asrLanguage);
+  // 球队热词开关与上限：上限限 0..25（内置表 25 个词），非法值回默认 6。
+  if(typeof merged.settings.teamHotwords!=='boolean')merged.settings.teamHotwords=DEFAULT.settings.teamHotwords;
+  {
+    const n=Number(merged.settings.teamHotwordsLimit);
+    merged.settings.teamHotwordsLimit=Number.isFinite(n)?Math.max(0,Math.min(25,Math.round(n))):DEFAULT.settings.teamHotwordsLimit;
+  }
   const {validClock}=require('./quiet-hours');
   for(const key of ['postQuietStart','postQuietEnd'])if(!validClock(merged.settings[key]))merged.settings[key]=DEFAULT.settings[key];
   if(merged.settings.postQuietStart===merged.settings.postQuietEnd)merged.settings.postQuietEnabled=false;

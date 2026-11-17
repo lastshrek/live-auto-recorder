@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const work = path.resolve(__dirname, '../work');
 fs.mkdirSync(work, { recursive: true });
 const root = fs.mkdtempSync(path.join(work, 'regression-'));
@@ -526,4 +527,32 @@ test('asr language defaults to Tianjin, accepts whitelisted dialects, and falls 
  assert.equal(normalizeAsrLanguage('随便写点东西'),'Tianjin','未知值应退回默认天津话');
  const {store}=isolatedStore('asrlang-');const c=store.load();
  assert.equal(c.settings.asrLanguage,'Tianjin','旧配置没有该字段时应拿到默认天津话');
+});
+
+test('team hotwords: core names, limit, dedupe, user override and config defaults',()=>{
+ const {TEAM_HOTWORDS,teamHotwords,loadUserTeamHotwords}=require('../src/core/team-hotwords');
+ const {withTeamHotwords}=require('../src/core/hotwords');
+ assert.ok(TEAM_HOTWORDS.includes('基莱斯')&&TEAM_HOTWORDS.includes('谢蒂内')&&TEAM_HOTWORDS.includes('于根伟'));
+ assert.ok(TEAM_HOTWORDS.includes('津门虎')&&TEAM_HOTWORDS.includes('泰达足球场'));
+ assert.equal(teamHotwords({limit:0}).length,0,'0 = 关闭');
+ assert.equal(teamHotwords({limit:6}).length,6);
+ assert.equal(teamHotwords({limit:999}).length,TEAM_HOTWORDS.length,'上限不超过词表长度');
+ // 基础热词（主播名）优先，球队词追加在后
+ const merged=withTeamHotwords('主播甲',{enabled:true,limit:3});
+ assert.equal(merged,'主播甲,基莱斯,谢蒂内,哈达斯','主播名必须在球队词之前');
+ assert.equal(withTeamHotwords('主播甲',{enabled:false}),'主播甲','关闭时不追加');
+ // 去重：基础词里已有球队词时不重复
+ assert.equal(withTeamHotwords('基莱斯',{enabled:true,limit:3}).split('基莱斯').length-1,1);
+ // 总数封顶 12
+ assert.equal(withTeamHotwords('主播甲',{enabled:true,limit:25}).split(',').length,12);
+ // 用户词表覆盖：临时目录写文件
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'teamhw-'));
+ fs.writeFileSync(path.join(dir,'hotwords-team.txt'),'# 自定义\n我的球员\n  另一个球员  \n');
+ assert.deepEqual(loadUserTeamHotwords(dir),['我的球员','另一个球员'],'注释与空白应被清理');
+ assert.deepEqual(teamHotwords({root:dir,limit:9}),['我的球员','另一个球员'],'用户词表应替代内置表');
+ fs.rmSync(dir,{recursive:true,force:true});
+ // 配置默认值与上限归一化
+ const {store}=isolatedStore('teamhw-');const c=store.load();
+ assert.equal(c.settings.teamHotwords,true,'默认启用球队热词');
+ assert.equal(c.settings.teamHotwordsLimit,6,'默认取 6 个');
 });

@@ -170,6 +170,11 @@
       </select>
     </label>
     <p class="hint">指定方言能避免口音被"洗"成普通话、保留原词。默认天津话；其他地区或多种方言混杂时改选对应方言或"自动识别"。</p>
+    <label class="check"><input id="setTeamHotwords" type="checkbox" /> 启用天津津门虎球队热词</label>
+    <label>球队热词数量（0=关闭，最多 25）
+      <input id="setTeamHotwordsLimit" type="number" min="0" max="25" step="1" />
+    </label>
+    <p class="hint">默认只取 6 个最易识别错的外援/专名（基莱斯、谢蒂内等）。这个词表对数量敏感，堆太多会让字幕变成热词串。想加球员或改词表：在应用数据目录建 hotwords-team.txt，一行一个词，写在里面的词会替代内置表。</p>
     <p class="hint">转字幕在本机离线运行，音频不出网。耗时约为录像时长的 1/8～1/15（4 小时约 8-15 分钟）。有录制在进行时会自动让路，转写失败不影响录像。</p>
     <label class="check"><input id="setUpload115" type="checkbox" /> 录完自动备份到 115 网盘</label>
     <label>本地保留 <input id="setUpload115Keep" type="number" min="0" max="365" step="1" style="width:70px" /> 天（0=不删）</label>
