@@ -185,6 +185,11 @@ def main():
     ap.add_argument("--srt", help="同时输出 SRT 字幕")
     ap.add_argument("--txt", help="同时输出纯文本")
     ap.add_argument("--hotwords", default="", help="逗号分隔的热词，提升专名识别")
+    ap.add_argument(
+        "--language",
+        default="",
+        help="语言/方言提示，如 Tianjin、Sichuan、Cantonese (Guangdong accent)；留空=自动识别",
+    )
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--max-new-tokens", type=int, default=256)
     ap.add_argument("--max-total-len", type=int, default=1024)
@@ -220,8 +225,22 @@ def main():
 
     t_asr = time.time()
     items = []
+    # Qwen3-ASR 支持按流给语言/方言提示（引擎内部拼成 prompt 里的
+    # "language <name>"）。方言提示能避免模型把方言"洗"成普通话，保留原词。
+    # 老版本 sherpa-onnx 没有 set_option，降级为自动识别而不是整场失败。
+    language_ok = False
+    if args.language:
+        probe = recognizer.create_stream()
+        if hasattr(probe, "set_option"):
+            try:
+                probe.set_option("language", args.language)
+                language_ok = True
+            except Exception:
+                language_ok = False
     for start_sample, seg_samples in segments:
         stream = recognizer.create_stream()
+        if language_ok:
+            stream.set_option("language", args.language)
         stream.accept_waveform(sr, seg_samples)
         recognizer.decode_stream(stream)
         text = (stream.result.text or "").strip()
@@ -248,6 +267,8 @@ def main():
         "text": "\n".join(it["text"] for it in items),
         "stats": {
             "segmentCount": len(items),
+            "language": args.language if language_ok else "",
+            "languageSupported": language_ok,
             "speechSeconds": round(sum(it["end"] - it["start"] for it in items), 2),
             "vadSeconds": round(vad_elapsed, 3),
             "asrSeconds": round(asr_elapsed, 3),

@@ -133,6 +133,8 @@ async function transcribeFile(input, options = {}) {
     modelDir,
     vadModel,
     hotwords = '',
+    // 语言/方言提示，如 'Tianjin'。空串=让模型自动判断语种。
+    language = '',
     threads = Math.max(1, Math.min(8, os.cpus().length - 1)),
     srtPath,
     txtPath,
@@ -173,6 +175,7 @@ async function transcribeFile(input, options = {}) {
       '--max-speech', String(maxSpeech),
     ];
     if (hotwords) args.push('--hotwords', hotwords);
+    if (language) args.push('--language', language);
     if (srtPath) args.push('--srt', srtPath);
     if (txtPath) args.push('--txt', txtPath);
 

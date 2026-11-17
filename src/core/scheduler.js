@@ -271,6 +271,8 @@ class Scheduler {
       modelDir: rt.modelDir,
       vadModel: rt.vadModel,
       hotwords,
+      // 转写语种/方言：默认天津话，可在设置里改或清空（自动识别）
+      language: this.cfg.settings.asrLanguage ?? '',
       srtPath: file.replace(/\.[^.]+$/, '.srt'),
       txtPath: file.replace(/\.[^.]+$/, '.txt'),
     });
@@ -873,6 +875,10 @@ class Scheduler {
     if (typeof patch.autoPartMerge === 'boolean') s.autoPartMerge = patch.autoPartMerge;
     if (typeof patch.preventSleep === 'boolean') s.preventSleep = patch.preventSleep;
     if (typeof patch.autoTranscribe === 'boolean') s.autoTranscribe = patch.autoTranscribe;
+    if (typeof patch.asrLanguage === 'string') {
+      // 白名单校验在 store 里统一做：不相识的值退回天津话，避免任意字符串进识别 prompt
+      s.asrLanguage = require('./store').normalizeAsrLanguage(patch.asrLanguage);
+    }
     if (typeof patch.upload115 === 'boolean') s.upload115 = patch.upload115;
     if (Number.isFinite(+patch.upload115RetentionDays)) s.upload115RetentionDays = Math.min(365, Math.max(0, Math.round(+patch.upload115RetentionDays)));
     if (typeof patch.upload115Root === 'string') {

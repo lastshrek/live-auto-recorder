@@ -113,6 +113,7 @@ button.mini.primary { background: var(--accent); border-color: var(--accent); co
 }
 .drawer input[type=checkbox] { width: 16px; height: 16px; }
 .drawer input[type=time] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 10px; border-radius: 6px; font-size: 13px; color-scheme: dark; }
+.drawer select { background: var(--bg); color: var(--text); border: 1px solid var(--line); padding: 8px 10px; border-radius: 6px; font-size: 13px; color-scheme: dark; }
 .drawer-actions { display: flex; gap: 10px; margin-top: auto; }
 #settingsPanel > h2, #settingsPanel > .drawer-actions { flex-shrink: 0; }
 .settings-body {

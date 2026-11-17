@@ -140,6 +140,36 @@
     <p class="hint">按电脑本地时间，可跨午夜。时段内不启动新的修复、合并或拆分任务；已开始的任务完整跑完。录制继续，结束后自动处理排队任务。</p>
     <label class="check"><input id="setNoSleep" type="checkbox" /> 录制期间阻止系统休眠</label>
     <label class="check"><input id="setAutoTranscribe" type="checkbox" /> 录完自动转字幕（本地离线，占 CPU）</label>
+    <label>转写字幕方言
+      <select id="setAsrLanguage">
+        <option value="Tianjin">天津话（默认）</option>
+        <option value="">自动识别</option>
+        <option value="Chinese">普通话</option>
+        <option value="Dongbei">东北话</option>
+        <option value="Sichuan">四川话</option>
+        <option value="Henan">河南话</option>
+        <option value="Shandong">山东话</option>
+        <option value="Shaanxi">陕西话</option>
+        <option value="Shanxi">山西话</option>
+        <option value="Hebei">河北话</option>
+        <option value="Anhui">安徽话</option>
+        <option value="Hubei">湖北话</option>
+        <option value="Hunan">湖南话</option>
+        <option value="Jiangxi">江西话</option>
+        <option value="Zhejiang">浙江话</option>
+        <option value="Yunnan">云南话</option>
+        <option value="Guizhou">贵州话</option>
+        <option value="Gansu">甘肃话</option>
+        <option value="Ningxia">宁夏话</option>
+        <option value="Fujian">福建话</option>
+        <option value="Cantonese (Guangdong accent)">粤语（广东）</option>
+        <option value="Cantonese (Hong Kong accent)">粤语（香港）</option>
+        <option value="Wu language">吴语</option>
+        <option value="Minnan language">闽南语</option>
+        <option value="English">英语</option>
+      </select>
+    </label>
+    <p class="hint">指定方言能避免口音被"洗"成普通话、保留原词。默认天津话；其他地区或多种方言混杂时改选对应方言或"自动识别"。</p>
     <p class="hint">转字幕在本机离线运行，音频不出网。耗时约为录像时长的 1/8～1/15（4 小时约 8-15 分钟）。有录制在进行时会自动让路，转写失败不影响录像。</p>
     <label class="check"><input id="setUpload115" type="checkbox" /> 录完自动备份到 115 网盘</label>
     <label>本地保留 <input id="setUpload115Keep" type="number" min="0" max="365" step="1" style="width:70px" /> 天（0=不删）</label>

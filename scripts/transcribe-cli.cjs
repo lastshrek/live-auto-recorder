@@ -16,11 +16,12 @@ const path = require('node:path');
 const { transcribeFile, findPython, diagnose } = require('../src/core/transcribe');
 const { autoHotwords } = require('../src/core/hotwords');
 const { loadConfig, VENV } = require('./setup-transcribe.cjs');
+const { normalizeAsrLanguage } = require('../src/core/store');
 
 const VIDEO_EXT = /\.(mp4|mkv|flv|mov|webm|ts|m4v|avi|wav|mp3|m4a|aac|flac)$/i;
 
 function parseArgs(argv) {
-  const out = { inputs: [], all: false, hotwords: '', threads: 0, keepAudio: false, srt: true, txt: true };
+  const out = { inputs: [], all: false, hotwords: '', language: null, threads: 0, keepAudio: false, srt: true, txt: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--all') out.all = true;
@@ -28,6 +29,7 @@ function parseArgs(argv) {
     else if (a === '--no-srt') out.srt = false;
     else if (a === '--no-txt') out.txt = false;
     else if (a === '--hotwords') out.hotwords = argv[++i] || '';
+    else if (a === '--language') out.language = argv[++i] ?? '';  // auto/留空=自动识别
     else if (a === '--no-auto-hotwords') out.noAutoHotwords = true;
     else if (a === '--threads') out.threads = Number(argv[++i]) || 0;
     else if (a === '--max-speech') out.maxSpeech = Number(argv[++i]) || 15;
@@ -35,6 +37,19 @@ function parseArgs(argv) {
     else out.inputs.push(a);
   }
   return out;
+}
+
+function readConfiguredLanguage() {
+  // config.json 不存在/读不了就退回默认天津话，不让 CLI 因缺配置而失败
+  try {
+    const { ROOT } = require('../src/core/store');
+    const cfgPath = path.join(ROOT, 'config.json');
+    if (!fs.existsSync(cfgPath)) return 'Tianjin';
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    return raw?.settings?.asrLanguage ?? 'Tianjin';
+  } catch {
+    return 'Tianjin';
+  }
 }
 
 function collectFiles(inputs, all) {
@@ -79,7 +94,7 @@ function fmtSize(bytes) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.inputs.length) {
-    console.log('用法: node scripts/transcribe-cli.cjs <文件或目录> [--all] [--hotwords "词1,词2"]');
+    console.log('用法: node scripts/transcribe-cli.cjs <文件或目录> [--all] [--hotwords "词1,词2"] [--language Tianjin|auto]');
     console.log('\n示例:');
     console.log('  node scripts/transcribe-cli.cjs recordings/主播名/某场.mp4');
     console.log('  node scripts/transcribe-cli.cjs recordings/主播名 --all');
@@ -141,6 +156,8 @@ async function main() {
         modelDir: cfg.modelDir,
         vadModel: cfg.vadModel,
         hotwords,
+        // 命令行优先；否则跟随 config.json 的 asrLanguage（默认天津话）
+        language: normalizeAsrLanguage(args.language === null ? readConfiguredLanguage() : args.language),
         threads: args.threads || undefined,
         maxSpeech: args.maxSpeech || 15,
         srtPath: args.srt ? `${base}.srt` : undefined,

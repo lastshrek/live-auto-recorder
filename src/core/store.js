@@ -9,6 +9,22 @@ const {writeJson}=require('../util/atomic-json');
 const ROOT = process.env.LR_ROOT ? path.resolve(process.env.LR_ROOT) : path.join(__dirname, '..', '..');
 const CONFIG_PATH = path.join(ROOT, 'config.json');
 
+// Qwen3-ASR 的 language 提示取值（英文名，与模型支持列表一致）。
+// 天津话排第一：本地主播多为天津口音，不定向会被"洗"成普通话。
+const ASR_LANGUAGES = [
+  'Tianjin', 'Chinese', 'Dongbei', 'Sichuan', 'Henan', 'Shandong', 'Shaanxi',
+  'Shanxi', 'Hebei', 'Anhui', 'Hubei', 'Hunan', 'Jiangxi', 'Zhejiang', 'Yunnan',
+  'Guizhou', 'Gansu', 'Ningxia', 'Fujian',
+  'Cantonese (Guangdong accent)', 'Cantonese (Hong Kong accent)',
+  'Wu language', 'Minnan language', 'English',
+];
+/** 归一化语种设置：''/'auto' = 自动识别；不认识的值退回默认天津话。 */
+function normalizeAsrLanguage(value) {
+  const s = String(value ?? '').trim();
+  if (!s || s.toLowerCase() === 'auto') return '';
+  return ASR_LANGUAGES.includes(s) ? s : 'Tianjin';
+}
+
 const DEFAULT = {
   watchlist: [], // [{ rid, secUid?, name?, maxSec?, titleFilter?, hours? }]
   settings: {
@@ -31,6 +47,9 @@ const DEFAULT = {
     postQuietStart: '23:00',
     postQuietEnd: '08:00',
     autoTranscribe: false, // 录完自动转字幕(默认关：转写吃 CPU，不能悄悄替用户开)
+    // 转写语种/方言提示。Qwen3-ASR 用英文名，'Tianjin' 即天津话；
+    // 空串表示交给模型自动判断。默认天津话：方言若不定向，容易被统一成普通话。
+    asrLanguage: 'Tianjin',
     upload115: false,      // 录完自动备份到 115(经本机 OpenList 的 WebDAV)
     upload115BaseUrl: 'http://127.0.0.1:5244/dav', // OpenList 的 WebDAV 入口
     upload115Mount: '115',         // OpenList 里的挂载路径(115 网盘的挂载点)
@@ -116,6 +135,7 @@ function mergeConfig(c,recovered,{noSave=false}={}){
     const n=Number(merged.settings[key]);merged.settings[key]=Number.isFinite(n)?Math.max(min,Math.min(max,n)):DEFAULT.settings[key];
   }
   for(const key of ['keepRaw','autoPartMerge','preventSleep','autoStart','postQuietEnabled'])if(typeof merged.settings[key]!=='boolean')merged.settings[key]=DEFAULT.settings[key];
+  merged.settings.asrLanguage=normalizeAsrLanguage(merged.settings.asrLanguage);
   const {validClock}=require('./quiet-hours');
   for(const key of ['postQuietStart','postQuietEnd'])if(!validClock(merged.settings[key]))merged.settings[key]=DEFAULT.settings[key];
   if(merged.settings.postQuietStart===merged.settings.postQuietEnd)merged.settings.postQuietEnabled=false;
@@ -160,4 +180,4 @@ function save(cfg) {
   writeJson(CONFIG_PATH,cfg,{backup:true,space:2});
 }
 
-module.exports = { ROOT, CONFIG_PATH, load, save };
+module.exports = { ROOT, CONFIG_PATH, load, save, ASR_LANGUAGES, normalizeAsrLanguage };

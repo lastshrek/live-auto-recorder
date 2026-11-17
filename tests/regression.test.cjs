@@ -515,3 +515,15 @@ test('real stalled FFmpeg is restarted by the no-growth watchdog', async () => {
     rec.stopped = true; for (const socket of sockets) socket.destroy(); await rec.stop(); await new Promise((r) => server.close(r));
   }
 });
+
+test('asr language defaults to Tianjin, accepts whitelisted dialects, and falls back on garbage',()=>{
+ const {normalizeAsrLanguage}=require('../src/core/store');
+ assert.equal(normalizeAsrLanguage('Tianjin'),'Tianjin');
+ assert.equal(normalizeAsrLanguage('Sichuan'),'Sichuan');
+ assert.equal(normalizeAsrLanguage('Cantonese (Guangdong accent)'),'Cantonese (Guangdong accent)');
+ assert.equal(normalizeAsrLanguage('auto'),'');
+ assert.equal(normalizeAsrLanguage(''),'');
+ assert.equal(normalizeAsrLanguage('随便写点东西'),'Tianjin','未知值应退回默认天津话');
+ const {store}=isolatedStore('asrlang-');const c=store.load();
+ assert.equal(c.settings.asrLanguage,'Tianjin','旧配置没有该字段时应拿到默认天津话');
+});
