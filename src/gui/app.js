@@ -244,7 +244,10 @@ function render() {
     }
 
     const tdOps = document.createElement('td');
-    tdOps.className = 'ops';
+    // 注意: .ops 的 display:flex 只能加在内层 div 上。若直接加在 <td> 上,
+    // 单元格会脱离 table-cell 布局, 高度塌陷, 行分隔线与左侧错位
+    const opsBox = document.createElement('div');
+    opsBox.className = 'ops';
     if (!t.secWatch && t.live) {
       const bw = document.createElement('button');
       bw.className = 'mini'; bw.textContent = '观看';
@@ -252,7 +255,7 @@ function render() {
       bw.onclick = safe((e) => {
         return buttonAction(e.currentTarget, 'watch:' + t.rid, () => window.api.watch(t.rid), '打开中…', '观看窗口已打开');
       }, 'watch');
-      tdOps.appendChild(bw);
+      opsBox.appendChild(bw);
     }
     if ((t.state === 'recording' && t.paused) || (t.state === 'idle' && t.manualStopped)) {
       const br = document.createElement('button');
@@ -261,7 +264,7 @@ function render() {
       br.onclick = safe((e) => {
         return buttonAction(e.currentTarget, 'record:' + t.rid, () => window.api.resumeRecording(t.rid), '继续中…', '已继续录制');
       }, 'resume');
-      tdOps.appendChild(br);
+      opsBox.appendChild(br);
     } else if (t.state === 'recording') {
       const bp = document.createElement('button');
       bp.className = 'mini'; bp.textContent = '⏸ 暂停';
@@ -269,7 +272,7 @@ function render() {
       bp.onclick = safe((e) => {
         return buttonAction(e.currentTarget, 'record:' + t.rid, () => window.api.pauseRecording(t.rid), '暂停中…', '已暂停录制');
       }, 'pause');
-      tdOps.appendChild(bp);
+      opsBox.appendChild(bp);
     }
     if (t.state === 'recording') {
       const bs = document.createElement('button');
@@ -278,7 +281,7 @@ function render() {
       bs.onclick = safe((e) => {
         return buttonAction(e.currentTarget, 'record:' + t.rid, () => window.api.stopRecording(t.rid), '封存中…', '本场已停录，后续处理请查看任务栏');
       }, 'stop');
-      tdOps.appendChild(bs);
+      opsBox.appendChild(bs);
     }
     const monitor = document.createElement('button');
     monitor.className = 'mini' + (t.monitorPaused ? ' primary' : '');
@@ -290,7 +293,7 @@ function render() {
       if(!t.monitorPaused && t.state==='recording' && !confirm('暂停监控会结束当前录制并保存已录内容，确定暂停？'))return;
       return buttonAction(button,'monitor:'+t.rid,()=>window.api.setMonitorPaused(t.rid,!t.monitorPaused),t.monitorPaused?'恢复中…':'暂停中…',t.monitorPaused?'监控已恢复':'监控已暂停');
     }, 'monitor');
-    tdOps.appendChild(monitor);
+    opsBox.appendChild(monitor);
     const bd = document.createElement('button');
     bd.className = 'mini danger'; bd.textContent = '删除';
     bd.dataset.key = 'remove';
@@ -299,15 +302,16 @@ function render() {
       if (!confirm(`删除对「${t.dispName || t.rid}」的监控? (已有录像文件保留)`)) return;
       return buttonAction(button, 'remove:' + t.rid, () => window.api.removeStreamer(t.rid), '删除中…', '已删除监控，录像保留');
     }, 'remove');
-    tdOps.appendChild(bd);
+    opsBox.appendChild(bd);
 
     const bc = document.createElement('button');
     bc.className = 'mini'; bc.textContent = '⚙';
     bc.dataset.key = 'config';
     bc.title = '标题过滤 / 值守时段';
     bc.onclick = safe(() => configRoom(t), 'config');
-    tdOps.appendChild(bc);
+    opsBox.appendChild(bc);
 
+    tdOps.appendChild(opsBox);
     tr.append(tdName, tdRid, tdState, tdTitle, tdDur, tdSize, tdOps);
     tb.appendChild(tr);
   }
