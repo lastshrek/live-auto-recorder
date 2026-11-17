@@ -386,9 +386,13 @@ class Scheduler {
         // 双保险: 任务已被替换/移除(表里不是本实例)则绝不再续链(防幽灵循环)
         if (this.tasks.get(task.key) !== task) return;
         const base = (this.cfg.settings.pollIntervalSec || 3) * 1000;
+        // 主页监控(无 rid)每轮要在常驻隐藏窗口里跑一次 DOM 扫描, 比接口轮询贵得多,
+        // 给它一个不低于 10s 的下限: 开播检出最多晚十几秒, 但常驻 CPU 能压下来一大截。
+        // 一旦识别出房间号就会转成普通任务, 立刻回到秒级轮询。
+        const interval = task.rid ? base : Math.max(10000, base);
         const wobble = ((Date.now() >> 7) + task.rid.length) % 41; // 0..40 稳定变化
         const backoff = Math.min((task.pollFails || 0) * 2000, 300000);
-        const t = setTimeout(() => this._loop(task), Math.round(base * (0.8 + wobble / 100)) + backoff);
+        const t = setTimeout(() => this._loop(task), Math.round(interval * (0.8 + wobble / 100)) + backoff);
         t.unref();
         this.timers.set(task.key, t);
       });
@@ -755,7 +759,7 @@ class Scheduler {
         try { await rec.mergeParts(); } catch (e) { log.warn('[rec] 分片合并异常(按原分片处理)', e.message); }
       }
       const secs = ((Date.now() - task.recorderStartedAt) / 1000).toFixed(0);
-      const totalMB = (rec.totalBytes() / 1048576).toFixed(1); // remux 会删 FLV, 字节数必须先抓
+      const totalMB = (rec.totalBytes({ fresh: true }) / 1048576).toFixed(1); // remux 会删 FLV, 字节数必须先抓
       files = await rec.remuxAll(settings.minSizeMB);
       if (settings.autoPartMerge && rec.part > 1 && !(rec.issues && rec.issues.length) &&
           files.length && files.every((f) => f.endsWith('.mp4'))) {

@@ -212,6 +212,10 @@ class DouyinSession {
       await loadWithTimeout(win, 'https://www.douyin.com/user/' + secUid, 20000);
       if(win.isDestroyed()||this.profileWins.get(secUid)!==win)return '';
       await sleep(8000);
+      // 首屏渲染完成后打开后台节流: 隐藏页的计时器/RxJS 轮询降到 1Hz, 常驻 CPU 大降。
+      // 扫描和 60s 刷新都是按需触发, 不受节流影响; 每次刷新又会重置页面的"隐藏计时",
+      // 不会落到 5 分钟后的 1/min 强节流里。
+      try { if (typeof win.webContents.setBackgroundThrottling === 'function') win.webContents.setBackgroundThrottling(true); } catch {}
     } else {
       // 定期刷新: 页面是SPA, 不刷新可能永远不渲染新开播状态
       const last = this.profileReloads.get(secUid) || 0;
