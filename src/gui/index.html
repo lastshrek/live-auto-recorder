@@ -143,6 +143,9 @@
     <label class="check"><input id="setNoSleep" type="checkbox" /> 录制期间阻止系统休眠</label>
     <label class="check"><input id="setAutoTranscribe" type="checkbox" /> 录完自动转字幕（本地离线，占 CPU）</label>
     <p class="hint">转字幕在本机离线运行，音频不出网。耗时约为录像时长的 1/8～1/15（4 小时约 8-15 分钟）。有录制在进行时会自动让路，转写失败不影响录像。</p>
+    <label class="check"><input id="setUpload115" type="checkbox" /> 录完自动备份到 115 网盘</label>
+    <label>本地保留 <input id="setUpload115Keep" type="number" min="0" max="365" step="1" style="width:70px" /> 天（0=不删）</label>
+    <p class="hint">成品与字幕会传到 115 的「直播录制备份」目录（经本机 OpenList 中转），传完校验大小一致才记账；只有确认上传过的文件才会按保留天数清理本地。录制期间不传，失败自动重试。</p>
     <label class="check"><input id="setAutoStart" type="checkbox" /> 开机自动启动</label>
     <label>Webhook 通知 <input id="setWebhook" type="text" placeholder="https://公网地址/钩子 (开播/录完时POST)" /></label>
     <p class="hint">存储预估：原画约 2-4 GB/小时·路；建议开启保留天数清理</p>

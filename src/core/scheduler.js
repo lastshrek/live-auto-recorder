@@ -17,6 +17,7 @@ const {assertWritableDir}=require('../util/writable-dir');
 const {RecoveryController}=require('./recovery');
 const {NetworkBackoff}=require('./network-backoff');
 const {TranscribeQueue, pickTranscribableFiles}=require('./transcribe-queue');
+const {Uploader}=require('./upload-queue');
 
 // 分段参数解析(对齐 biliLive-tools): "90"=90分钟, "500MB"=按500MB大小分段, "0"=不分段
 function parseSegment(v) {
@@ -49,6 +50,19 @@ class Scheduler {
       isBusy: () => this.recordingCount > 0,
       onUpdate: () => this.onEvent && this.onEvent('transcribe', this.transcriber.snapshot()),
     });
+    // 115 备份上传(经本机 OpenList 的 WebDAV)。扫描式而非钩子式:
+    // 成片和字幕(还有后来的摘要)不是同时出现的，按文件逐个记账才能把
+    // 后到的 .srt/.txt/.md 补齐，应用重启也能自愈。
+    this.uploader = new Uploader({
+      settings: this.cfg.settings,
+      roots: () => [this.outDir, ...this._historyRoots()],
+      statePath: path.join(ROOT, 'upload-state.json'),
+      // 录制中不传，别和直拷抢 IO 与上行带宽
+      isBusy: () => this.recordingCount > 0,
+      onEvent: (snap) => this.onEvent && this.onEvent('upload', snap),
+      concurrency: Math.max(1, Math.min(4, Number(this.cfg.settings.upload115Concurrency) || 2)),
+    });
+    this.uploader.start();
     // 收尾成功后按需触发转写。
     // 注意：post.onResult 已被 recovery 占用（用于释放准入名额），这里必须
     // 用包装而不是直接赋值，否则会把恢复队列的释放逻辑覆盖掉，导致
@@ -859,6 +873,15 @@ class Scheduler {
     if (typeof patch.autoPartMerge === 'boolean') s.autoPartMerge = patch.autoPartMerge;
     if (typeof patch.preventSleep === 'boolean') s.preventSleep = patch.preventSleep;
     if (typeof patch.autoTranscribe === 'boolean') s.autoTranscribe = patch.autoTranscribe;
+    if (typeof patch.upload115 === 'boolean') s.upload115 = patch.upload115;
+    if (Number.isFinite(+patch.upload115RetentionDays)) s.upload115RetentionDays = Math.min(365, Math.max(0, Math.round(+patch.upload115RetentionDays)));
+    if (typeof patch.upload115Root === 'string') {
+      const root = patch.upload115Root.trim().replace(/^\/+|\/+$/g, '').slice(0, 120);
+      if (root && !root.includes('..')) s.upload115Root = root;
+    }
+    if (typeof patch.upload115BaseUrl === 'string' && /^https?:\/\/\S+$/i.test(patch.upload115BaseUrl.trim())) s.upload115BaseUrl = patch.upload115BaseUrl.trim().slice(0, 200);
+    if (typeof patch.upload115User === 'string') s.upload115User = patch.upload115User.trim().slice(0, 64);
+    if (typeof patch.upload115Password === 'string') s.upload115Password = patch.upload115Password.slice(0, 128);
     if (Number.isFinite(+patch.postConcurrency)) s.postConcurrency = Math.min(4, Math.max(1, Math.round(+patch.postConcurrency)));
     if (typeof patch.outputDir === 'string') {
       const od = patch.outputDir.trim().slice(0, 200).replace(/^[-\s]+/, '');
@@ -946,6 +969,7 @@ class Scheduler {
 
   async shutdown(options={}) {
     this.stopped = true;
+    if (this.uploader) this.uploader.stop();
     if(options.deferProcessing&&this.recovery){this.recovery.prepareExit();this.post.prepareExit();}
     else{this.post.prepareShutdown?.();if(this.recovery)this.recovery.close();}
     for (const t of this.timers.values()) clearInterval(t);

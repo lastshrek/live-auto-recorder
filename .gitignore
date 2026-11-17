@@ -7,6 +7,8 @@ config.json
 config.json.*
 history.json
 history.json.*
+upload-state.json
+upload-state.json.*
 recording-jobs.json
 recording-jobs.json.*
 *.flv

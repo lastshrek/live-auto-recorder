@@ -33,6 +33,14 @@ const DEFAULT = {
     postQuietStart: '23:00',
     postQuietEnd: '08:00',
     autoTranscribe: false, // 录完自动转字幕(默认关：转写吃 CPU，不能悄悄替用户开)
+    upload115: false,      // 录完自动备份到 115(经本机 OpenList 的 WebDAV)
+    upload115BaseUrl: 'http://127.0.0.1:5244/dav', // OpenList 的 WebDAV 入口
+    upload115Mount: '115',         // OpenList 里的挂载路径(115 网盘的挂载点)
+    upload115User: 'admin',
+    upload115Password: '',
+    upload115Root: '直播录制备份', // 115 里的目标目录(会按本地相对路径建子目录)
+    upload115RetentionDays: 7,     // 本地保留天数(0=不删)；只删已确认上传的
+    upload115Concurrency: 2,       // 同时上传几个文件(115 非会员约 2MB/s 封顶，2 路够用)
   },
 };
 

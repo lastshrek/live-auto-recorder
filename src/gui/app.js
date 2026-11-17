@@ -568,6 +568,8 @@ function openDrawer() {
   $('setPostQuietEnd').value=s.postQuietEnd||'08:00';
   $('setNoSleep').checked = !!s.preventSleep;
   $('setAutoTranscribe').checked = !!s.autoTranscribe;
+  $('setUpload115').checked = !!s.upload115;
+  $('setUpload115Keep').value = s.upload115RetentionDays ?? 7;
   $('setAutoStart').checked = !!s.autoStart;
   $('setWebhook').value = s.webhookUrl || '';
   backdrop.hidden = false;
@@ -622,6 +624,8 @@ $('btnSaveSettings').onclick = safe(async () => {
       postQuietEnd: $('setPostQuietEnd').value,
       preventSleep: $('setNoSleep').checked,
       autoTranscribe: $('setAutoTranscribe').checked,
+      upload115: $('setUpload115').checked,
+      upload115RetentionDays: +$('setUpload115Keep').value || 0,
       autoStart: $('setAutoStart').checked,
       webhookUrl: $('setWebhook').value.trim(),
     });
