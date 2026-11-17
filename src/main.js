@@ -123,9 +123,11 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   function createTray() {
-    const img = nativeImage.createFromBuffer(makeTrayIconPng(process.platform));
-    // macOS 菜单栏图标按点显示, 32px 图需标记为 2x 才不会被当成 32pt 放大
-    if (process.platform === 'darwin') img.setTemplateImage(false);
+    const isMac = process.platform === 'darwin';
+    // macOS 用 18pt 模板图(36px @2x), 由系统按菜单栏明暗自动反色;
+    // 其它平台仍是 16px 红点。
+    const img = nativeImage.createFromBuffer(makeTrayIconPng(process.platform), isMac ? { scaleFactor: 2 } : {});
+    if (isMac) img.setTemplateImage(true);
     tray = new Tray(img);
     tray.setToolTip('直播自动录制 (后台运行中)');
     tray.setContextMenu(

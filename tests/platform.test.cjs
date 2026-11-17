@@ -75,12 +75,35 @@ test('ffmpeg executable name follows the platform',()=>{
 test('tray icon is rendered at the density each platform expects',()=>{
  const readSize=buf=>({w:buf.readUInt32BE(16),h:buf.readUInt32BE(20)});
  const mac=readSize(makeTrayIconPng('darwin'));
- assert.deepEqual(mac,{w:32,h:32},'macOS 菜单栏需要 2x 位图, 否则 Retina 下发虚');
+ assert.deepEqual(mac,{w:36,h:36},'macOS 菜单栏用 18pt 模板图(36px @2x), 否则 Retina 下发虚');
  const win=readSize(makeTrayIconPng('win32'));
  assert.deepEqual(win,{w:16,h:16});
  // 仍是合法 PNG
  for(const buf of [makeTrayIconPng('darwin'),makeTrayIconPng('win32')])
   assert.equal(buf.subarray(1,4).toString('ascii'),'PNG');
+});
+
+test('macOS tray icon is a pure black alpha template so the system can tint it',()=>{
+ const zlib=require('node:zlib');
+ const png=makeTrayIconPng('darwin'),size=36;
+ let pos=8;const idat=[];
+ while(pos<png.length){
+  const len=png.readUInt32BE(pos),type=png.toString('ascii',pos+4,pos+8);
+  if(type==='IDAT')idat.push(png.subarray(pos+8,pos+8+len));
+  pos+=12+len;
+ }
+ const raw=zlib.inflateSync(Buffer.concat(idat));
+ let opaque=0,antialiased=0,clear=0;
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  const o=y*(1+size*4)+1+x*4;
+  // 模板图必须是纯黑: 任何彩色像素都会被系统渲染成脏边
+  assert.equal(raw[o],0);assert.equal(raw[o+1],0);assert.equal(raw[o+2],0);
+  const a=raw[o+3];
+  if(a===255)opaque+=1;else if(a===0)clear+=1;else antialiased+=1;
+ }
+ assert.ok(opaque>0,'应有实心区域');
+ assert.ok(clear>0,'点与环之间需要留白');
+ assert.ok(antialiased>0,'边缘必须有抗锯齿过渡, 否则小尺寸下发毛');
 });
 
 test('orphan writer skips the check instead of blocking recovery when the query tool is unavailable',async()=>{
