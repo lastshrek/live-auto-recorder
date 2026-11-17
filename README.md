@@ -5,6 +5,15 @@
 
 默认按**原画**录制；想省硬盘可以切到**最低画质**，画质由你定。
 
+## 最近更新（2026-11-17）
+
+| 变更 | 说明与操作 | 详见 |
+|---|---|---|
+| 转写默认天津话 | 设置里多了「转写字幕方言」，出厂天津话；换地区改这一项即可 | [方言与语种](#方言与语种默认天津话) |
+| 移除公司分组 | 主播改为平铺列表，搜索与状态筛选保留；旧配置里的公司字段自动清理 | [主播列表与主页导入](#主播列表与主页导入) |
+| 首页界面调整 | 表头吸顶、行状态色条（录制中红/在播蓝）、次要按钮悬停显隐、数字右对齐 | 同上 |
+| 常驻更省资源 | 主页监控窗口开屏后启用后台节流；面板每秒只更新数字不重建表格 | [已知取舍](#已知取舍) |
+
 ## 它能做什么
 
 - **多主播并发监控**：轮询发现开播，按画质偏好选档，直接 `-c copy` 拉流——不转码，所以
@@ -318,6 +327,7 @@ npm run icon
 | `keepDays` | 0 | 录像保留天数，0 = 永久 |
 | `postConcurrency` | 2 | 后处理并发，负载高时可调回 1 |
 | `autoTranscribe` | false | 录完自动转字幕（占 CPU，默认关） |
+| `asrLanguage` | `Tianjin` | 转写方言/语种提示，`""`=自动识别，可选值见「方言与语种」 |
 | `outputDir` | `recordings` | 录像保存位置。相对路径按安装目录解析，也可填绝对路径 |
 
 主播项可选字段：`maxSec`（单段时长上限，主要用于测试）、`titleFilter`（只录标题匹配的场次）、`hours`（值守时段）。
@@ -429,7 +439,10 @@ npm run icon
 
 ## 主播列表与主页导入
 
-- 列表顶部支持搜索（主播名/房间号/标题）与按状态筛选（录制中/主页监控/需要留意/离线）
+- 列表顶部支持搜索（主播名/房间号/标题）与按状态筛选（录制中/主页监控/需要留意/离线）。
+  搜索或筛选时标题旁会显示「显示 N」，无匹配时给一行提示；清空即恢复全量
+- 主播行左侧色条表示状态：**红色=录制中**、**蓝色=在播未录**，不用逐行读徽章
+- 每行右侧操作按钮平时半透明，鼠标移到该行才全亮；表头在列表滚动时保持吸顶
 - 支持导入个人主页链接：已识别房间号的直接秒级监控；离线导入则等首次开播识别，
   成功后永久转为房间号监控。重复房间自动合并为一个任务
 - 旧版本的公司分组功能已移除：读取旧配置时会自动清掉 companies / companyId
@@ -487,6 +500,8 @@ https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-q
 npm run transcribe -- "recordings/主播名/某场.mp4"        # 单个文件
 npm run transcribe -- recordings/主播名 --all             # 整个目录（递归）
 npm run transcribe -- 某场.mp4 --hotwords "商品名,主播名"  # 带热词，提升专名识别
+npm run transcribe -- 某场.mp4 --language Sichuan          # 换方言（默认天津话）
+npm run transcribe -- 某场.mp4 --language auto             # 不指定，交给模型判断
 ```
 
 产物与视频同目录：`某场.srt`（字幕）+ `某场.txt`（纯文本）。
@@ -497,11 +512,42 @@ npm run transcribe -- 某场.mp4 --hotwords "商品名,主播名"  # 带热词�
 |---|---|
 | `--all` | 递归处理子目录 |
 | `--hotwords "词1,词2"` | 热词偏置，商品名/人名/口播术语建议填 |
+| `--language Tianjin` | 语种/方言提示，默认跟随设置里的方言（出厂天津话）；`auto` 或留空=自动识别 |
 | `--no-auto-hotwords` | 关闭自动热词（默认会从主播名推导） |
 | `--threads N` | 线程数，默认 CPU 核数减一 |
 | `--max-speech N` | 单段最长秒数，默认 15 |
 | `--no-srt` / `--no-txt` | 只要其中一种输出 |
 | `--keep-audio` | 保留抽取的临时 wav，便于排查识别质量 |
+
+### 方言与语种（默认天津话）
+
+模型本身能自动判断语种，也可以显式给一个方言提示。**不指定时，天津口音容易被
+统一成普通话用词**（把「嘛」「倍儿」洗成标准说法），指定后保留原词。
+
+出厂默认 **天津话**。改法有两种：
+
+```bash
+# 界面：设置 → 转写字幕方言（下拉选择，保存后对新任务生效）
+# 或直接改 config.json
+"asrLanguage": "Tianjin"
+```
+
+```bash
+npm run transcribe -- 某场.mp4 --language Sichuan   # 单次覆盖，不改设置
+```
+
+可选值（英文名，与模型一致）：`Tianjin`、`Chinese`（普通话）、`Dongbei`、`Sichuan`、
+`Henan`、`Shandong`、`Shaanxi`、`Shanxi`、`Hebei`、`Anhui`、`Hubei`、`Hunan`、
+`Jiangxi`、`Zhejiang`、`Yunnan`、`Guizhou`、`Gansu`、`Ningxia`、`Fujian`、
+`Cantonese (Guangdong accent)`、`Cantonese (Hong Kong accent)`、`Wu language`、
+`Minnan language`、`English`。填空字符串或 `auto` 表示自动识别。
+
+两点实际影响：
+
+- 提示只是"倾向"，不是硬约束。主播换成别的口音时，改设置或单次 `--language` 即可，
+  已经转好的旧字幕不会被重写
+- 老版本 sherpa-onnx 如果没有 `set_option` 接口，会静默降级为自动识别，不会让整场
+  转写失败；跑完的 JSON 里 `stats.languageSupported` 会写明这一次到底有没有生效
 
 ### 硬件与速度
 
@@ -586,11 +632,12 @@ npm run transcribe -- recordings/主播名 --all
 - **必须分块喂 VAD**。`VoiceActivityDetector` 内部缓冲固定，一次性 `accept_waveform` 整段长音频会覆盖尚未取走的结果。代码按 512 采样点（32ms）逐块喂入。
 - **相邻短段要合并**。VAD 按静音切得很细，逐段识别会把一句话拆成多条字幕。`merge_short()` 在「间隔 ≤0.35 秒且合并后 ≤15 秒」时并起来。
 - **音频规格固定为 16kHz / 单声道 / 16-bit PCM**，由 ffmpeg 统一转好再交给 Python。这样 Python 侧不需要 soundfile/librosa，Windows 上少一类编译问题。
+- **方言提示只能走 stream 选项**。`OfflineRecognizer.from_qwen3_asr()` **没有** `language` 形参，只有 `hotwords`；语言要按流设置：`stream.set_option("language", "Tianjin")`，引擎内部会拼成 prompt 里的 `language Tianjin`。老版本没有 `set_option` 时会抛异常，代码降级为自动识别并在结果里标 `languageSupported:false`，不要让整场转写因此失败。
 
 ### 限制
 
 - **0.6B 是精度与体积的折中**。1.7B 更准（WER 3.6% vs 5.2%），但 ONNX 版本需自行导出，且内存约 4.6 GB。当前选用 0.6B 是为了让普通机器也能跑。
-- **没有手动方言开关**。模型自动判别语种/方言，不能强制指定某一地区口音。若某场识别偏差大，优先试 `--hotwords` 补专名。
+- **方言提示是倾向，不是硬约束**。指定后模型会优先按该方言解码，口音混杂或主播临时换口音时仍可能判断偏差；这时改设置或单次 `--language` 即可，已生成的旧字幕不会自动重写。识别偏差主要仍靠 `--hotwords` 补专名。
 - **不产出逐字时间戳**。时间戳精度到「句」（VAD 段边界），不是逐字对齐。
 
 ## 架构
@@ -653,5 +700,13 @@ npm run test:ui   # Electron 界面测试
 
 ## 已知取舍
 
+- **主页监控比房间号监控贵**：没有房间号的主播要常驻一个隐藏页面做 DOM 扫描。首屏渲染完成后
+  会打开后台节流（隐藏页计时器降到 1Hz），扫描周期也给了 10 秒下限——开播检出最多晚十几秒，
+  换来常驻 CPU 大幅下降。等识别出房间号就会自动转成秒级监控，之后不再有这项开销
+- **界面每秒刷新只改数字**：列表结构没变时（只是时长/大小在涨）不重建表格，避免每秒上百个
+  DOM 节点和滚动位置、悬停、键盘焦点被打断；窗口隐藏时也不做无谓的重绘
+- **分片字节数不重复查盘**：复用看门狗每秒本就要做的那次 `stat`，收尾记账时才精确重查
 - `settings.keepRaw` 是旧配置的兼容字段，当前版本只产出单一录像文件，该值不再影响产物。
 - `segmentMin` 同样为旧字段，读取时会自动迁移到 `segment`。
+- `settings.asrLanguage` 只有白名单里的值会生效，写错会退回默认天津话（不会把任意字符串拼进
+  识别提示）。
