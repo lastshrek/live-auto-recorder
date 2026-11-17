@@ -7,6 +7,32 @@ function component(value,fallback){
 }
 function shorten(value,limit){let result='';for(const ch of value){if(result.length+ch.length>limit)break;result+=ch;}return result;}
 function identity(file){const s=fs.statSync(file);if(!s.isFile())throw Error('录像路径不是普通文件');return {ino:s.ino,dev:s.dev,size:s.size};}
+// 硬链接在 exFAT / UDF / 部分网络盘上不可用（ENOTSUP）。第一次失败后按目标目录记住，
+// 之后改用「O_EXCL 占位 + rename 覆盖占位」：同样不覆盖无关文件、不复制整段录像，
+// 因为源与目标必定同目录（调用方已校验），rename 只是改目录项。
+const noHardLink=new Set();
+function destinationExists(){const error=Error('目标录像已存在，未覆盖任何文件');error.code='EEXIST';return error;}
+function moveNoClobber(source,destination){
+  const directory=path.dirname(destination);
+  let linked=false;
+  if(!noHardLink.has(directory)){
+    try{fs.linkSync(source,destination);linked=true;}
+    catch(error){
+      if(error.code==='EEXIST')throw destinationExists();
+      // 除「目标已存在」外的失败都按不支持硬链接处理（errno 45/ENOTSUP 可能被上层映射成 EIO），
+      // 记到该目录上，之后直接走降级路径；降级只改目录项，不会复制数据，同样不会覆盖无关文件。
+      noHardLink.add(directory);
+    }
+  }
+  if(linked){fs.unlinkSync(source);return;}  // 链接已建，删除源的错误（占用等）照旧上抛
+  let handle;
+  try{handle=fs.openSync(destination,'wx');}catch(error){if(error.code==='EEXIST')throw destinationExists();throw error;}
+  fs.closeSync(handle);
+  try{fs.renameSync(source,destination);}
+  catch(error){try{fs.unlinkSync(destination);}catch{}throw error;}
+}
+// 上一次走到「占位后崩溃」会留下 0 字节目标文件：源仍完好时清掉它继续命名。
+function isPlaceholder(file){try{const s=fs.lstatSync(file);return s.isFile()&&!s.isSymbolicLink()&&s.size===0;}catch{return false;}}
 function matches(file,expected){const actual=identity(file);return ['ino','dev','size'].every(k=>actual[k]===expected[k]);}
 function startStamp(rec){
   const match=path.basename(rec.base).match(/_(\d{8})_(\d{6})(?:_\d+)?$/);
@@ -61,18 +87,21 @@ function applyPlan(rec,entries,{renameFinal=false}={}){
     const finalSource=renameFinal&&path.dirname(path.resolve(entry.source))===path.dirname(path.resolve(rec.base))&&isFinalVideoName(path.basename(entry.source));
     if((!allowed.has(path.resolve(entry.source))&&!finalSource)||path.dirname(path.resolve(entry.destination))!==path.dirname(path.resolve(rec.base))||!/_纯享版\.mp4$/.test(entry.destination))throw Error('录像命名计划路径无效，原文件已保留');
     if(fs.existsSync(entry.destination)){
-      if(!matches(entry.destination,entry.identity))throw Error('目标录像已存在，未覆盖任何文件');
-      if(fs.existsSync(entry.source)){
-        if(!matches(entry.source,entry.identity))throw Error('原录像已变化，保留现有文件');
-        fs.unlinkSync(entry.source);
+      const stale=isPlaceholder(entry.destination)&&fs.existsSync(entry.source)&&matches(entry.source,entry.identity);
+      if(!stale){
+        if(!matches(entry.destination,entry.identity))throw Error('目标录像已存在，未覆盖任何文件');
+        if(fs.existsSync(entry.source)){
+          if(!matches(entry.source,entry.identity))throw Error('原录像已变化，保留现有文件');
+          fs.unlinkSync(entry.source);
+        }
+        continue;
       }
-      continue;
+      fs.unlinkSync(entry.destination);
     }
     if(!fs.existsSync(entry.source)||!matches(entry.source,entry.identity))throw Error('待命名录像已变化或缺失，保留现有文件');
-    // Same-folder hard links create the destination atomically without ever
-    // replacing an unrelated file. A crash before unlink is safe to resume.
-    fs.linkSync(entry.source,entry.destination);
-    fs.unlinkSync(entry.source);
+    // Same-folder move that never replaces an unrelated file: hard link first,
+    // exFAT/网络盘降级为「O_EXCL 占位 + rename」。A crash before unlink is safe to resume.
+    moveNoClobber(entry.source,entry.destination);
   }
   return entries.map(entry=>entry.destination);
   } catch(error) {
@@ -99,12 +128,14 @@ function applyArchivePlan(rec,entries){
   const allowed=new Set();for(let i=1;i<=rec.part;i++)allowed.add(path.resolve(rec.mp4Path(i)));
   for(const e of entries){
     if(!allowed.has(path.resolve(e.source))||path.dirname(path.resolve(e.target))!==path.resolve(dir)||path.basename(e.source)!==path.basename(e.target))throw Error('超大原片归档路径无效');
-    if(fs.existsSync(e.target)){
+    const stale=isPlaceholder(e.target)&&fs.existsSync(e.source)&&matches(e.source,e.identity);
+    if(fs.existsSync(e.target)&&!stale){
       if(!matches(e.target,e.identity))throw Error('超大原片备份目标已存在，保留原文件');
       if(fs.existsSync(e.source)){if(!matches(e.source,e.identity))throw Error('超大原片已变化，保留原文件');fs.unlinkSync(e.source);}
     }else{
+      if(stale)fs.unlinkSync(e.target);
       if(!fs.existsSync(e.source)||!matches(e.source,e.identity))throw Error('超大原片已变化或缺失，保留现有文件');
-      fs.linkSync(e.source,e.target);fs.unlinkSync(e.source);
+      moveNoClobber(e.source,e.target);
     }
   }
 }

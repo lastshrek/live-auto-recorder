@@ -45,8 +45,28 @@ test('an open file postpones naming without losing the recording',()=>{
  }finally{fs.unlinkSync=unlink;fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('overnight recordings ending before 09:00 use the following early-morning archive date',()=>{
- const {dir,rec,job}=fixture();rec.base=path.join(dir,'主播_123456_20261026_235630');
+test('no Hardlink（exFAT 报 ENOTSUP）时用占位+rename 完成命名且不复制文件',()=>{
+ const {dir,rec,job}=fixture(),link=fs.linkSync;
+ try{
+  fs.linkSync=()=>{const error=Error('ENOTSUP: operation not supported on socket');error.code='ENOTSUP';throw error;};
+  const plan=makePlan(rec,job);const files=applyPlan(rec,plan);
+  assert.equal(fs.readFileSync(files[0],'utf8'),'raw-video');
+  assert.equal(fs.existsSync(rec.mp4Path(1)),false);
+  assert.deepEqual(fs.readdirSync(dir),['2026-10-26_测试主播_13-29-13_直播内容_纯享版.mp4']);
+  assert.deepEqual(applyPlan(rec,plan),files);
+ }finally{fs.linkSync=link;fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('降级路径留下的 0 字节占位文件会被识别并继续命名',()=>{
+ const {dir,rec,job}=fixture(),link=fs.linkSync;
+ try{
+  fs.linkSync=()=>{const error=Error('ENOTSUP');error.code='ENOTSUP';throw error;};
+  const plan=makePlan(rec,job);fs.writeFileSync(plan[0].destination,'');
+  const files=applyPlan(rec,plan);
+  assert.equal(fs.readFileSync(files[0],'utf8'),'raw-video');
+  assert.equal(fs.existsSync(rec.mp4Path(1)),false);
+ }finally{fs.linkSync=link;fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('overnight recordings ending before 09:00 use the following early-morning archive date',()=>{ const {dir,rec,job}=fixture();rec.base=path.join(dir,'主播_123456_20261026_235630');
  try{
   job.finishedAt=Date.parse('2026-10-27T04:39:22+08:00');const plan=makePlan(rec,job);
   assert.ok(plan.every(p=>path.basename(p.destination).startsWith('2026-10-27凌晨_测试主播_23-56-30_')));
