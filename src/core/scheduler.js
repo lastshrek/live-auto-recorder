@@ -31,6 +31,19 @@ function parseSegment(v) {
   return { minSec: 0, sizeMB: Math.max(1, n * mult) };
 }
 
+// 主播列表展示顺序：录制中/收尾 > 直播中 > 主页监控 > 离线。
+// 同一档内保持原来的添加顺序（Array#sort 稳定），刷新时不会来回跳。
+function taskRank(t) {
+  if (!t) return 3;
+  if (t.state === 'recording' || t.state === 'stopping') return 0;
+  if (t.live) return 1;
+  if (t.secWatch) return 2;
+  return 3;
+}
+function sortTasks(list) {
+  return list.slice().sort((a, b) => taskRank(a) - taskRank(b));
+}
+
 class Scheduler {
   constructor(cfg) {
     this.cfg = cfg;
@@ -835,7 +848,7 @@ class Scheduler {
     } catch (e) { /* 状态附加失败不影响历史列表本身 */ }
     return {
       time: Date.now(),
-      tasks: [...this.tasks.values()].map((t) => ({
+      tasks: sortTasks([...this.tasks.values()].map((t) => ({
         rid: t.rid || t.secUid,
         secWatch: !t.rid,
         identity: t.secUid || t.rid,
@@ -856,7 +869,7 @@ class Scheduler {
         bytes: t.rec ? t.rec.totalBytes() : 0,
         parts: t.rec ? t.rec.part : 0,
         pollFails: t.pollFails || 0,
-      })),
+      }))),
       history,
       post,
       transcribe: this.transcriber?.snapshot() || { pending: 0, running: null, items: [] },
@@ -1024,4 +1037,4 @@ class Scheduler {
   }
 }
 
-module.exports = { Scheduler, parseSegment };
+module.exports = { Scheduler, parseSegment, taskRank, sortTasks };
