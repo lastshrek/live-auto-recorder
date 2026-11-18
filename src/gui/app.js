@@ -112,7 +112,7 @@ function historySig(s) {
   return JSON.stringify((s.history || []).map((h) => [
     h.at, h.rid, h.nickname, h.title, h.secs, (h.files || []).length, h.missing, h.status, h.error,
     h.transcribeStatus?.status, h.transcribeStatus?.label, h.transcribeStatus?.percent,
-    h.summaryStatus?.status,
+    h.summaryStatus?.status, h.uploadStatus?.status,
   ]));
 }
 
@@ -605,7 +605,8 @@ function renderHistory() {
     if(h.status||h.error){const detail=document.createElement('div');detail.className='sub';detail.textContent=h.error||({processing:'处理中',queued:'排队',quiet:'静音时段，等待自动处理',waiting:'等待恢复',failed:'处理失败',warning:'需检查',done:'完成',recovered:'已修复',skipped:'原片完成',canceled:'已取消'}[h.status]||h.status);detail.title=h.error||h.recoveryNotice||'';td5.appendChild(detail);}
     const td6=statusCell(h.transcribeStatus, 'transcribe');
     const td7=statusCell(h.summaryStatus, 'summary');
-    tr.append(td1, td2, td3, td4, td5, td6, td7);
+    const td8=statusCell(h.uploadStatus, 'upload');
+    tr.append(td1, td2, td3, td4, td5, td6, td7, td8);
     hb.appendChild(tr);
   }
   $('historyEmpty').hidden = hist.length > 0;

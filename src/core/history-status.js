@@ -12,8 +12,28 @@ const path = require('node:path');
 
 const CACHE_MS = 2000;
 const _cache = new Map(); // key -> { at, value }
+let _uploadCache = null;  // { at, mtimeMs, records:Set<绝对路径> }
 
-function _resetCache() { _cache.clear(); }
+function _resetCache() { _cache.clear(); _uploadCache = null; }
+
+/**
+ * 读取 115 备份脚本写的 upload-state.json，返回已上传文件的绝对路径集合。
+ * 键就是绝对路径，值为 {size, mtimeMs, remote, at}。
+ * 按文件 mtime 缓存：备份脚本每天跑一次，重复读 33KB 文件没必要。
+ */
+function _loadUploaded(statePath) {
+  if (!statePath) return new Set();
+  try {
+    const st = fs.statSync(statePath);
+    if (_uploadCache && _uploadCache.mtimeMs === st.mtimeMs && _uploadCache.path === statePath) {
+      return _uploadCache.records;
+    }
+    const data = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    const records = new Set(Object.keys(data));
+    _uploadCache = { path: statePath, mtimeMs: st.mtimeMs, records };
+    return records;
+  } catch { return new Set(); }
+}
 
 /** 把历史条目里的相对文件路径还原成绝对路径 */
 function _resolve(entry, fallbackRoot) {
@@ -33,14 +53,16 @@ function _exists(p) {
  * @param {object} entry 历史条目
  * @param {string} fallbackRoot 当前保存目录（老条目没有 outRoot 时兜底）
  * @param {object} runningMap 转录队列里 file(绝对路径)->item 的映射，含实时进度
- * @returns {{transcribe:{status,label,percent,segments,detail}, summary:{status,label,detail}}}
+ * @param {Set} uploaded 已上传文件绝对路径集合（来自 upload-state.json）
+ * @returns {{transcribe:object, summary:object, upload:object}}
  */
-function statusFor(entry, fallbackRoot, runningMap) {
+function statusFor(entry, fallbackRoot, runningMap, uploaded) {
   const video = _resolve(entry, fallbackRoot);
   if (!video) {
     return {
       transcribe: { status: 'none', label: '—', percent: 0, segments: 0, detail: '' },
       summary: { status: 'none', label: '—', detail: '' },
+      upload: { status: 'none', label: '—', detail: '' },
     };
   }
 
@@ -87,11 +109,18 @@ function statusFor(entry, fallbackRoot, runningMap) {
     ? { status: 'done', label: '已推送', detail: '' }
     : { status: 'pending', label: '未生成', detail: '' };
 
-  return { transcribe, summary };
+  // 上传状态：以主录像 mp4 是否进 upload-state 为准。
+  // 备份脚本按大小匹配，每天 04:00 跑一次；未上传不代表失败，只是还没轮到。
+  const isUploaded = uploaded && uploaded.has(video);
+  const upload = isUploaded
+    ? { status: 'done', label: '已备份', detail: '已上传 115 网盘' }
+    : { status: 'pending', label: '待备份', detail: '等待每日 04:00 备份' };
+
+  return { transcribe, summary, upload };
 }
 
 /** 把状态附加到 history 的每条记录上，返回新数组（不改原对象） */
-function attach(history, fallbackRoot, transcriberSnapshot) {
+function attach(history, fallbackRoot, transcriberSnapshot, uploadStatePath) {
   if (!Array.isArray(history)) return [];
   const runningMap = new Map();
   for (const it of ((transcriberSnapshot && transcriberSnapshot.items) || [])) {
@@ -99,10 +128,11 @@ function attach(history, fallbackRoot, transcriberSnapshot) {
   }
   const run = transcriberSnapshot && transcriberSnapshot.running;
   if (run && run.file) runningMap.set(run.file, run);
+  const uploaded = _loadUploaded(uploadStatePath);
 
   return history.map(h => {
-    const s = statusFor(h, fallbackRoot, runningMap);
-    return { ...h, transcribeStatus: s.transcribe, summaryStatus: s.summary };
+    const s = statusFor(h, fallbackRoot, runningMap, uploaded);
+    return { ...h, transcribeStatus: s.transcribe, summaryStatus: s.summary, uploadStatus: s.upload };
   });
 }
 

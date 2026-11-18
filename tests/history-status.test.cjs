@@ -122,3 +122,44 @@ test('界面渲染：statusCell 生成带状态类名的标签与进度条', () 
   assert.equal(none.textContent, '—');
   assert.equal(none.children.length, 0);
 });
+
+test('上传状态：主录像在 upload-state 中显示已备份', () => {
+  _resetCache();
+  const root = tmpdir();
+  const dir = path.join(root, '主播_123');
+  fs.mkdirSync(dir);
+  const mp4 = path.join(dir, '2026-11-18_主播_纯享版.mp4');
+  fs.writeFileSync(mp4, 'v');
+  const entry = { files: ['主播_123/2026-11-18_主播_纯享版.mp4'], outRoot: root };
+  const statePath = path.join(root, 'upload-state.json');
+  fs.writeFileSync(statePath, JSON.stringify({ [mp4]: { size: 1, at: Date.now() } }));
+  const out = attach([entry], '/wrong', { items: [], running: null }, statePath);
+  assert.equal(out[0].uploadStatus.status, 'done');
+  assert.equal(out[0].uploadStatus.label, '已备份');
+});
+
+test('上传状态：未上传显示待备份（非失败）', () => {
+  _resetCache();
+  const root = tmpdir();
+  const dir = path.join(root, '主播_123');
+  fs.mkdirSync(dir);
+  const mp4 = path.join(dir, '2026-11-18_主播_纯享版.mp4');
+  fs.writeFileSync(mp4, 'v');
+  const entry = { files: ['主播_123/2026-11-18_主播_纯享版.mp4'], outRoot: root };
+  const statePath = path.join(root, 'upload-state.json');
+  fs.writeFileSync(statePath, JSON.stringify({ ['/other/file.mp4']: { size: 1 } }));
+  const out = attach([entry], '/wrong', { items: [], running: null }, statePath);
+  assert.equal(out[0].uploadStatus.status, 'pending');
+  assert.equal(out[0].uploadStatus.label, '待备份');
+});
+
+test('上传状态文件缺失时安全降级为待备份', () => {
+  _resetCache();
+  const root = tmpdir();
+  const dir = path.join(root, '主播_123');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, '2026-11-18_主播_纯享版.mp4'), 'v');
+  const entry = { files: ['主播_123/2026-11-18_主播_纯享版.mp4'], outRoot: root };
+  const out = attach([entry], '/wrong', { items: [], running: null }, path.join(root, 'none.json'));
+  assert.equal(out[0].uploadStatus.status, 'pending');
+});

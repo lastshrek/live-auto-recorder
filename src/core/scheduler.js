@@ -831,7 +831,7 @@ class Scheduler {
     let history=this.history.slice(-30).reverse().map(h=>{const view=byId.get(h.jobId);return view?{...h,status:view.status,error:h.status==='quiet'&&view.status!=='quiet'?'':h.error}:h;});
     // 附加转录/摘要状态：以同目录产物文件为准，转录进度取队列实时快照
     try {
-      history = require('./history-status').attach(history, this.outDir, this.transcriber?.snapshot());
+      history = require('./history-status').attach(history, this.outDir, this.transcriber?.snapshot(), path.join(ROOT, 'upload-state.json'));
     } catch (e) { /* 状态附加失败不影响历史列表本身 */ }
     return {
       time: Date.now(),
