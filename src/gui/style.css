@@ -282,3 +282,15 @@ header { padding: 10px 20px; }
 .ops { flex-wrap: wrap; }
 .ops .mini { white-space: nowrap; }
 #tbl td:nth-child(5), #tbl td:nth-child(6) { white-space: nowrap; }
+
+/* ---- 历史列表：转录/推送状态标签 ---- */
+.status-cell { white-space: nowrap; }
+.status-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:8px; font-size:12px; line-height:1.5; }
+.status-badge::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+.status-badge.st-done { background:#163525; color:#4ad48a; }       /* 已转录/已推送 */
+.status-badge.st-processing { background:#213047; color:#6ea8ff; } /* 转录中 */
+.status-badge.st-queued, .status-badge.st-waiting { background:#3a331d; color:#ffcf5c; }
+.status-badge.st-failed { background:#3a1f24; color:#ff7b72; }
+.status-badge.st-pending, .status-badge.st-none { background:#23262f; color:var(--dim); }
+.status-minibar { display:block; margin-top:3px; height:3px; width:64px; background:var(--line); border-radius:2px; overflow:hidden; }
+.status-minibar span { display:block; height:100%; background:#6ea8ff; border-radius:2px; transition:width .4s ease; }

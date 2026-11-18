@@ -111,6 +111,8 @@ function tableSig(s) {
 function historySig(s) {
   return JSON.stringify((s.history || []).map((h) => [
     h.at, h.rid, h.nickname, h.title, h.secs, (h.files || []).length, h.missing, h.status, h.error,
+    h.transcribeStatus?.status, h.transcribeStatus?.label, h.transcribeStatus?.percent,
+    h.summaryStatus?.status,
   ]));
 }
 
@@ -561,6 +563,27 @@ function renderPost() {
 $('postBadge').onclick = safe(() => { postPanelOpen = !postPanelOpen; renderPost(); }, 'postToggle');
 
 // ---- 历史录制 ----
+// 转录/推送状态单元格：全 textContent 构建，状态标签按状态着色
+function statusCell(s, kind) {
+  const td = document.createElement('td');
+  td.className = 'sub status-cell';
+  if (!s || !s.status || s.status === 'none') { td.textContent = '—'; return td; }
+  const badge = document.createElement('span');
+  badge.className = 'status-badge st-' + s.status;
+  badge.textContent = s.label || s.status;
+  if (s.detail) badge.title = s.detail;
+  td.appendChild(badge);
+  // 转录中在标签下补一条细进度条，和顶部转写进度条呼应
+  if (kind === 'transcribe' && s.status === 'processing' && s.percent > 0) {
+    const bar = document.createElement('span');
+    bar.className = 'status-minibar';
+    const fill = document.createElement('span');
+    fill.style.width = Math.max(0, Math.min(100, s.percent)) + '%';
+    bar.appendChild(fill);
+    td.appendChild(bar);
+  }
+  return td;
+}
 function renderHistory() {
   const hist = (state && state.history) || [];
   const hb = $('historyBody');
@@ -580,7 +603,9 @@ function renderHistory() {
     td5.textContent = h.missing ? '文件已删除' : (h.files || []).length + ' 个';
     if (h.missing) td5.title = '录像文件已不在磁盘上（可能被手动删除或已过保留期）';
     if(h.status||h.error){const detail=document.createElement('div');detail.className='sub';detail.textContent=h.error||({processing:'处理中',queued:'排队',quiet:'静音时段，等待自动处理',waiting:'等待恢复',failed:'处理失败',warning:'需检查',done:'完成',recovered:'已修复',skipped:'原片完成',canceled:'已取消'}[h.status]||h.status);detail.title=h.error||h.recoveryNotice||'';td5.appendChild(detail);}
-    tr.append(td1, td2, td3, td4, td5);
+    const td6=statusCell(h.transcribeStatus, 'transcribe');
+    const td7=statusCell(h.summaryStatus, 'summary');
+    tr.append(td1, td2, td3, td4, td5, td6, td7);
     hb.appendChild(tr);
   }
   $('historyEmpty').hidden = hist.length > 0;
