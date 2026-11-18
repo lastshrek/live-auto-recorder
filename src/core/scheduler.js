@@ -45,10 +45,11 @@ class Scheduler {
     // 自动转写队列。与 post 分开是因为转写耗时长(小时级)，塞进收尾队列
     // 会让界面上的"正在收尾"卡住几分钟，看起来像卡死。
     this.transcriber = new TranscribeQueue({
-      run: (file, item) => this._runTranscribe(file, item),
+      run: (file, item, onProgress, signal) => this._runTranscribe(file, item, onProgress, signal),
       // 有录制在进行时让路，避免与直拷/转封装抢 CPU
       isBusy: () => this.recordingCount > 0,
       onUpdate: () => this.onEvent && this.onEvent('transcribe', this.transcriber.snapshot()),
+      statePath: path.join(ROOT, 'transcribe-state.json'),
     });
     // 115 备份上传(经本机 OpenList 的 WebDAV)。扫描式而非钩子式:
     // 成片和字幕(还有后来的摘要)不是同时出现的，按文件逐个记账才能把
@@ -252,7 +253,7 @@ class Scheduler {
    * 环境检查放在这里而不是入队时：入队发生在收尾链路里，那里不能因为
    * 缺 Python 就抛异常打断收尾；等真正要转时再报错，报错也只影响字幕。
    */
-  async _runTranscribe(file, item) {
+  async _runTranscribe(file, item, onProgress, signal) {
     const { loadRuntimeConfig } = require('./transcribe-runtime');
     const rt = loadRuntimeConfig();
     if (!rt) {
@@ -282,6 +283,8 @@ class Scheduler {
       language: this.cfg.settings.asrLanguage ?? '',
       srtPath: file.replace(/\.[^.]+$/, '.srt'),
       txtPath: file.replace(/\.[^.]+$/, '.txt'),
+      onProgress,
+      signal,
     });
   }
 
@@ -292,6 +295,8 @@ class Scheduler {
 
   start() {
     log.info('[sched] 启动, 关注列表:', this.cfg.watchlist.map((w) => w.rid).join(', ') || '(空)');
+    // 恢复上次退出时未完成的转写：字幕已生成则补记完成，否则重新入队
+    try { this.transcriber.restore(); } catch (e) { log.warn('[transcribe] 启动恢复失败:', e.message); }
     this._applyWatchlist();
     if(this.recovery)this.recoveryPromise=this.recovery.start({background:true}).catch(e=>log.error('[jobs] 恢复暂未完成:',e.message));
     // 磁盘水位巡检(60s): 录制中且剩余低于阈值 → 停止全部录制并告警
@@ -850,6 +855,7 @@ class Scheduler {
       })),
       history,
       post,
+      transcribe: this.transcriber?.snapshot() || { pending: 0, running: null, items: [] },
       // 查不到时给 null 而不是 NaN：界面据此显示"—"，避免把失败渲染成 0.0GB
       diskFreeGB: (() => { const n = this.freeBytes(); return n === null ? null : +(n / 1024 ** 3).toFixed(1); })(),
       // 有场次正在往录像目录写文件（含收尾）。界面据此锁住「保存路径」，
@@ -987,6 +993,7 @@ class Scheduler {
   async shutdown(options={}) {
     this.stopped = true;
     if (this.uploader) this.uploader.stop();
+    if (this.transcriber) this.transcriber.stop();
     if(options.deferProcessing&&this.recovery){this.recovery.prepareExit();this.post.prepareExit();}
     else{this.post.prepareShutdown?.();if(this.recovery)this.recovery.close();}
     for (const t of this.timers.values()) clearInterval(t);

@@ -237,13 +237,22 @@ def main():
                 language_ok = True
             except Exception:
                 language_ok = False
-    for start_sample, seg_samples in segments:
+    # 逐段进度写到 stderr（stdout 最后一行是结果 JSON，不能被污染）。
+    # Node 侧解析 LR_PROGRESS 行驱动界面进度条。按时间节流，每秒最多一条，
+    # 最后一段必定补发一条 100%，避免长音频刷屏或进度停在 99%。
+    asr_total = len(segments)
+    next_report = time.time() + 1.0
+    for seg_index, (start_sample, seg_samples) in enumerate(segments, 1):
         stream = recognizer.create_stream()
         if language_ok:
             stream.set_option("language", args.language)
         stream.accept_waveform(sr, seg_samples)
         recognizer.decode_stream(stream)
         text = (stream.result.text or "").strip()
+        now = time.time()
+        if now >= next_report or seg_index == asr_total:
+            print(f"LR_PROGRESS {seg_index}/{asr_total}", file=sys.stderr, flush=True)
+            next_report = now + 1.0
         # 纯静音段和口水音会产出空串或单个标点，直接丢弃，否则字幕里全是空条目。
         if not text or text.strip("。，、,.!?！？ ") == "":
             continue

@@ -25,6 +25,10 @@
   <div id="layoutWorkspace" class="layout-workspace">
   <div id="postPanel" class="post-strip" hidden>
     <div class="layout-head"><strong>后处理</strong><div id="postUpdated" class="sub" role="status"></div><button id="layoutReset" class="mini">恢复默认布局</button><button id="postCollapse" class="mini">收起</button></div>
+    <div id="transcribeStrip" class="ts-strip" hidden>
+      <div class="ts-line"><strong id="tsName">字幕转写</strong><span id="tsMeta" class="sub"></span><span id="tsEta" class="sub ts-eta"></span></div>
+      <div class="ts-track" role="progressbar" aria-label="字幕转写进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="tsBar" class="ts-fill"></div></div>
+    </div>
     <div class="post-scroll">
     <div id="postItems" class="post-items"></div>
     <div id="postEmpty" class="sub" style="padding:2px 0">暂无任务（录制结束后自动收尾）</div>

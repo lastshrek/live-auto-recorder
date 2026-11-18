@@ -374,7 +374,57 @@ function overallPct(v) {
   const cur = (v.partsDone || 0) + (v.status === 'burning' ? (v.partPct || 0) / 100 : 0);
   return Math.min(100, Math.round((cur / total) * 100));
 }
+
+// ---- 字幕转写进度条(嵌在后处理面板顶部) ----
+function renderTranscribe() {
+  const strip = $('transcribeStrip');
+  if (!strip) return null;
+  const t = state?.transcribe;
+  const run = t?.running;
+  if (!run) {
+    // 空闲时也展示最近一次结果，重装后能看到之前的转写去哪了
+    const recentItem = (t?.items || []).find(i => i.status === 'done' || i.status === 'failed');
+    if (!recentItem) { strip.hidden = true; return null; }
+    strip.hidden = false;
+    strip.classList.toggle('failed', recentItem.status === 'failed');
+    $('tsName').textContent = '字幕转写';
+    $('tsMeta').textContent = (recentItem.status === 'failed' ? '上次失败 · ' : '上次完成 · ')
+      + (recentItem.name || '') + (recentItem.segments ? ` · ${recentItem.segments} 段` : '')
+      + (recentItem.error ? ` · ${recentItem.error}` : '');
+    $('tsMeta').title = $('tsMeta').textContent;
+    $('tsMeta').textContent = $('tsMeta').textContent.slice(0, 110);
+    $('tsEta').textContent = '';
+    $('tsBar').style.width = '100%';
+    const track = strip.querySelector?.('.ts-track');
+    if (track) track.setAttribute('aria-valuenow', '100');
+    return null;
+  }
+  strip.classList.remove('failed');
+  strip.hidden = false;
+  const pct = Math.max(0, Math.min(100, Number(run.percent) || 0));
+  $('tsName').textContent = run.name || '字幕转写';
+  $('tsMeta').textContent = (run.stage || '正在识别')
+    + (run.total > 0 ? ` · ${run.done || 0}/${run.total} 段` : '')
+    + ` · ${pct}%`;
+  $('tsBar').style.width = pct + '%';
+  const track = strip.querySelector?.('.ts-track');
+  if (track) track.setAttribute('aria-valuenow', String(pct));
+  let eta = '预计完成时间：正在估算';
+  if (run.startedAt && run.done > 0 && run.total > run.done) {
+    const elapsed = (Date.now() - run.startedAt) / 1000;
+    if (elapsed > 5) {
+      const remain = Math.max(0, Math.round(elapsed / run.done * (run.total - run.done)));
+      const finish = new Date(Date.now() + remain * 1000);
+      const clock = finish.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+      eta = `约剩 ${remain >= 60 ? Math.ceil(remain / 60) + '分钟' : remain + '秒'} · 预计 ${clock} 完成`;
+    }
+  }
+  $('tsEta').textContent = eta;
+  return { run, pending: t?.pending || 0, pct };
+}
+
 function renderPost() {
+  const trans = renderTranscribe();
   if($('postUpdated'))$('postUpdated').textContent=state?.post?.updatedAt||state?.time?'状态更新：'+new Date(state.post?.updatedAt||state.time).toLocaleTimeString('zh-CN',{hour12:false}):'正在连接任务状态';
   const items = ((state && state.post && state.post.items) || []).map(v=>v.status==='quiet'&&!state?.post?.quiet?.active?{...v,status:'queued',stage:'排队等待处理'}:v);
   const active = items.filter((v) => ['processing', 'burning'].includes(v.status));
@@ -400,6 +450,14 @@ function renderPost() {
     pb.textContent = `后处理空闲 ${postPanelOpen ? '▾' : '▸'}`;
     pb.classList.remove('busy');
   }
+  // 转写进度优先显示在折叠条上：面板收起时也能看到"字幕转写 42%"
+  if (trans) {
+    pb.textContent = `字幕转写 ${trans.pct}%${trans.pending ? ' · 排队' + trans.pending : ''} ${postPanelOpen ? '▾' : '▸'}`;
+    pb.classList.add('busy');
+  } else if ((state?.transcribe?.pending || 0) > 0) {
+    pb.textContent = `字幕转写排队 ${state.transcribe.pending} ${postPanelOpen ? '▾' : '▸'}`;
+    pb.classList.add('busy');
+  }
 
   const panel = $('postPanel');
   if (!postPanelOpen) {
@@ -410,7 +468,7 @@ function renderPost() {
   const box = document.createElement('div');
   const pending=[...queued,...paused,...quiet,...attention].sort((a,b)=>(a.queuePosition||1e9)-(b.queuePosition||1e9));
   const recent = [...active, ...pending, ...items.filter(v => !['processing', 'burning', 'queued','paused','quiet','waiting','failed','warning'].includes(v.status)).slice(-8).reverse()];
-  $('postEmpty').hidden = recent.length > 0;
+  $('postEmpty').hidden = recent.length > 0 || !!trans;
   for (const v of recent) {
     const row = document.createElement('div');
     row.dataset.key = String(v.id || v.name + ':' + recent.indexOf(v));

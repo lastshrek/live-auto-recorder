@@ -94,7 +94,10 @@ function extractAudio(ffmpegPath, input, output, { onProgress } = {}) {
     child.stderr.on('data', chunk => {
       stderr += chunk.toString();
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-32 * 1024);
-      if (onProgress && /time=/.test(String(chunk))) onProgress(String(chunk));
+      if (onProgress) {
+        const m = String(chunk).match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (m) onProgress({ stage: 'extract', seconds: +m[1] * 3600 + +m[2] * 60 + +m[3] });
+      }
     });
     child.on('error', reject);
     child.on('close', code => {
@@ -143,6 +146,8 @@ async function transcribeFile(input, options = {}) {
     maxSpeech = 15,
     timeoutMs = 0,
     onStage,
+    onProgress,
+    signal,
   } = options;
 
   if (!fs.existsSync(input)) throw new Error(`输入文件不存在: ${input}`);
@@ -160,7 +165,7 @@ async function transcribeFile(input, options = {}) {
 
   try {
     if (onStage) onStage('extract');
-    await extractAudio(ffmpegPath, input, wav);
+    await extractAudio(ffmpegPath, input, wav, { onProgress });
     const dur = wavDurationSeconds(wav);
     if (dur !== null && dur < 0.5) throw new Error('音频时长过短，无法转写');
 
@@ -181,6 +186,12 @@ async function transcribeFile(input, options = {}) {
 
     const result = await new Promise((resolve, reject) => {
       const child = spawn(python, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      // 应用退出时中止引擎，避免留孤儿进程写同一个字幕文件
+      const abortRun = () => { try { child.kill('SIGTERM'); } catch {} };
+      if (signal) {
+        if (signal.aborted) abortRun();
+        else signal.addEventListener('abort', abortRun, { once: true });
+      }
       let stdout = '';
       let stderr = '';
       let timer;
@@ -191,10 +202,31 @@ async function transcribeFile(input, options = {}) {
         }, timeoutMs);
       }
       child.stdout.on('data', c => { stdout += c; });
-      child.stderr.on('data', c => { stderr += c; });
+      // 引擎把逐段进度打在 stderr（stdout 末行要留给结果 JSON）。
+      // chunk 可能把一行截成两半，残留部分留到下一次再拼。
+      let progressTail = '';
+      child.stderr.on('data', c => {
+        stderr += c;
+        if (!onProgress) return;
+        const text = progressTail + String(c);
+        const lines = text.split('\n');
+        progressTail = lines.pop() || '';
+        for (const line of lines) {
+          const m = line.match(/LR_PROGRESS\s+(\d+)\s*\/\s*(\d+)/);
+          if (!m) continue;
+          const done = +m[1], total = +m[2];
+          onProgress({
+            stage: 'transcribe',
+            done,
+            total,
+            percent: total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0,
+          });
+        }
+      });
       child.on('error', e => { if (timer) clearTimeout(timer); reject(e); });
       child.on('close', code => {
         if (timer) clearTimeout(timer);
+        if (signal) signal.removeEventListener('abort', abortRun);
         // 引擎把结果 JSON 打在 stdout 最后一行，前面可能有 sherpa 的告警。
         const line = stdout.trim().split('\n').reverse().find(l => l.trim().startsWith('{'));
         if (!line) {
