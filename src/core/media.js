@@ -56,4 +56,16 @@ function hasMediaErrors(stderr) {
   return /invalid|corrupt|error|failed|missing picture|non.monoton|damaged|truncat/i.test(String(stderr));
 }
 
-module.exports = { parsePacketHashes, createPacketHashParser, overlapCut, hasMediaErrors };
+// 仅限「拼接产物」校验使用：整份 stderr 里除了封装层 dts 抖动（写 mp4 时
+// muxer 会自动微调继续，不影响画面与声音）之外没有任何其他报错。
+// 源分片自身的 pts 倒退仍走重编码修复，不能靠这个函数放行。
+// 回归背景：2026-11-19 聚金阁场次，分片单独校验都通过，拼接后因断流边缘
+// 的时间戳抖动被 null 校验器判死，整场 72 分钟录像无法发布。
+const DTS_LINE = /non[ -]?monoton/i;
+const REPEAT_LINE = /Last message repeated/i;
+function onlyDtsWarnings(stderr) {
+  const lines = String(stderr).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => DTS_LINE.test(line) || REPEAT_LINE.test(line));
+}
+
+module.exports = { parsePacketHashes, createPacketHashParser, overlapCut, hasMediaErrors, onlyDtsWarnings };

@@ -14,7 +14,7 @@ const { unpackedPath } = require('../util/app-paths');
 const ffmpegPath = ffmpegStatic ? unpackedPath(ffmpegStatic) : ffmpegStatic;
 const log = require('../util/log');
 const { UA } = require('../util/const');
-const { parsePacketHashes, createPacketHashParser, overlapCut, hasMediaErrors } = require('./media');
+const { parsePacketHashes, createPacketHashParser, overlapCut, hasMediaErrors, onlyDtsWarnings } = require('./media');
 const { inspectFlvTailAsync } = require('./flv-tail-async');
 const { pipeline } = require('node:stream/promises');
 const {assertSpace,DiskSpaceError}=require('./disk-space');
@@ -360,7 +360,7 @@ class Recorder {
     const duration=await this._probeDuration(file);
     const r = await this._runFfmpeg(['-v', 'error', '-err_detect', 'explode', '-i', file,
       '-map', '0:v:0', '-map', '0:a?', '-fps_mode', 'passthrough', '-enc_time_base:v', '1:1000000', '-f', 'null', '-'], Math.max(this._processingTimeout([file]),Math.ceil(duration*1000)), false, duration);
-    const result={ok:r.code===0&&!hasMediaErrors(r.stderr),stderr:r.stderr};
+    const result={ok:r.code===0&&!hasMediaErrors(r.stderr),stderr:r.stderr,code:r.code};
     const after=mediaIdentity(file);
     if(result.ok&&before&&after?.full!==before.full)return {ok:false,stderr:'完整性检查期间文件发生变化，保留原文件等待重新检查'};
     if(result.ok&&before&&after?.full===before.full){
@@ -524,7 +524,12 @@ class Recorder {
       if(r.spaceError||/no space left|ENOSPC/i.test(r.stderr))throw new DiskSpaceError(r.stderr);
       if (r.code !== 0 || hasMediaErrors(r.stderr) || this._sizeOf(output) <= 1024) throw new Error('拼接输出异常: ' + r.stderr.slice(0, 180));
       const validation = await this.validateMedia(output);
-      if (!validation.ok) throw new Error('拼接完整性检查失败: ' + validation.stderr.slice(0, 180));
+      // 分片单独校验都通过后，拼接产物仍可能因断流边缘的时间戳抖动被 null 校验器
+      // 报 dts 非单调（muxer 层问题，写 mp4 时会自动微调）。只要解码全程跑完、
+      // 除 dts 外没有任何报错，就不因此拒绝整场录像；真正的解码错误照旧保留原片。
+      const tsOnly = validation.code === 0 && onlyDtsWarnings(validation.stderr);
+      if (!validation.ok && !tsOnly) throw new Error('拼接完整性检查失败: ' + validation.stderr.slice(0, 180));
+      if (tsOnly) log.warn('[rec] 拼接产物存在封装层时间戳抖动，全量解码校验已通过，照常发布');
       const identity=fs.statSync(output);
       const plan={files,output,destination,identity:{ino:identity.ino,dev:identity.dev,size:identity.size},originalParts:this.part,emptyParts:[...this.emptyParts],durations,starts:indices.map(i=>this.partStarts[i]||this.startedAt)};
       this.mergePlan=plan;if(this.checkpoint()===false)throw new Error('任务记录暂不可写，原分片保留');
