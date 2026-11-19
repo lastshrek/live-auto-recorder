@@ -383,7 +383,51 @@ function renderTranscribe() {
   if (!strip) return null;
   const t = state?.transcribe;
   const run = t?.running;
+  const pendingItems = (t?.items || []).filter(i => i.status === 'queued' || i.status === 'waiting');
+
+  // 排队任务清单：录制让路期间也能看到排了什么，并可逐个取消
+  let pend = typeof strip.querySelector === 'function' ? strip.querySelector('.ts-pending') : null;
+  if (!pend) {
+    pend = document.createElement('div');
+    pend.className = 'ts-pending';
+    strip.appendChild(pend);
+  }
+  if (pendingItems.length) {
+    pend.hidden = false;
+    if (typeof pend.replaceChildren === 'function') {
+      pend.replaceChildren(...pendingItems.map(i => {
+        const row = document.createElement('div'); row.className = 'ts-prow';
+        const label = document.createElement('span'); label.className = 'ts-plabel';
+        label.textContent = `排队 · ${i.name || i.file || ''} · ${i.stage || '等待转写'}`;
+        label.title = i.file || '';
+        const btn = document.createElement('button'); btn.className = 'mini'; btn.textContent = '取消';
+        btn.title = '从转写队列移除该任务，不影响录像文件';
+        btn.onclick = safe(async e => {
+          const r = await buttonAction(e.currentTarget, 'tcancel:' + i.id, () => window.api.transcribeCancel(i.id), '取消中…');
+          if (r && r.ok === false) throw new Error(r.error || '无法取消');
+        }, 'transcribeCancel');
+        row.append(label, btn);
+        return row;
+      }));
+    }
+  } else if (pend.hidden !== true) {
+    pend.hidden = true;
+  }
+
   if (!run) {
+    // 录制让路期间有排队任务：展示排队状态而不是误导性的「上次结果」
+    if (pendingItems.length) {
+      strip.classList.remove('failed');
+      strip.hidden = false;
+      $('tsName').textContent = '字幕转写排队';
+      $('tsMeta').textContent = `${pendingItems.length} 个任务等待录制空闲（录制优先）`;
+      $('tsMeta').title = '';
+      $('tsEta').textContent = '';
+      $('tsBar').style.width = '0%';
+      const track0 = strip.querySelector?.('.ts-track');
+      if (track0) track0.setAttribute('aria-valuenow', '0');
+      return null;
+    }
     // 空闲时也展示最近一次结果，重装后能看到之前的转写去哪了
     const recentItem = (t?.items || []).find(i => i.status === 'done' || i.status === 'failed');
     if (!recentItem) { strip.hidden = true; return null; }

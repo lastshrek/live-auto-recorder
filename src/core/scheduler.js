@@ -150,6 +150,12 @@ class Scheduler {
     return this.transcriber.enqueue(file, { nickname, reason: 'manual' });
   }
 
+  /** 供 GUI 取消一个转写任务（排队中移除，进行中中断） */
+  transcribeCancel(id) {
+    if (!this.transcriber) return { ok: false, error: '转写队列未初始化' };
+    return this.transcriber.cancel(id);
+  }
+
   // 全局限速(自适应): 目标让全部房间一轮耗时 ≈ pollIntervalSec。
   // 少房间 → 快闸门(≥300ms, 8房间3s设置时一轮≈9s); 多房间 → 自动放宽(≤1600ms, 21房间约0.9req/s,
   // 仍远低于实测触发风控的7req/s)。此前固定1600ms导致8房间实际19s/轮, 3s设置形同虚设。

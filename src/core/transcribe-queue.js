@@ -80,7 +80,7 @@ class TranscribeQueue {
         file: rec.file,
         name: rec.name || path.basename(rec.file),
         reason: rec.reason || 'auto',
-        status: ['queued', 'waiting', 'processing', 'done', 'failed'].includes(rec.status) ? rec.status : 'queued',
+        status: ['queued', 'waiting', 'processing', 'done', 'failed', 'canceled'].includes(rec.status) ? rec.status : 'queued',
         stage: rec.stage || '等待转写',
         percent: Number.isFinite(rec.percent) ? rec.percent : 0,
         done: rec.done || 0, total: rec.total || 0,
@@ -90,7 +90,7 @@ class TranscribeQueue {
         textFile: rec.textFile || '', srtFile: rec.srtFile || '',
       };
       this.items.push(item);
-      if (item.status === 'done' || item.status === 'failed') continue;
+      if (item.status === 'done' || item.status === 'failed' || item.status === 'canceled') continue;
       if (!fs.existsSync(item.file)) {
         item.status = 'failed';
         item.stage = '源文件已不存在';
@@ -154,6 +154,34 @@ class TranscribeQueue {
     this._save();
     this._schedule(0);
     return item;
+  }
+
+  /**
+   * 取消任务。排队/等待中的直接移出队列并记为 canceled（重启后不再续做）；
+   * 正在转写的通过 AbortController 中断子进程，catch 侧按已取消落账。
+   */
+  cancel(id) {
+    if (!id || typeof id !== 'string') return { ok: false, error: '缺少任务 id' };
+    if (this.running?.id === id) {
+      this.running._canceled = true;
+      try { this._controller?.abort(); } catch { /* 已结束则无需中断 */ }
+      return { ok: true, wasRunning: true };
+    }
+    const qi = this.queue.findIndex(q => q.id === id);
+    if (qi >= 0) {
+      const [item] = this.queue.splice(qi, 1);
+      item.status = 'canceled';
+      item.stage = '已取消';
+      item.updatedAt = Date.now();
+      this.onUpdate();
+      this._save();
+      return { ok: true };
+    }
+    const item = this.items.find(i => i.id === id);
+    if (item && ['done', 'failed', 'canceled'].includes(item.status)) {
+      return { ok: false, error: '该任务已结束，无需取消' };
+    }
+    return { ok: false, error: '未找到该转写任务' };
   }
 
   _schedule(delayMs) {
@@ -238,11 +266,17 @@ class TranscribeQueue {
       })
       .catch(e => {
         // 只记在自己身上，不动录像的任何状态
-        item.status = 'failed';
-        item.stage = '转写失败';
-        item.error = String(e && e.message || e).slice(0, 200);
+        if (item._canceled) {
+          item.status = 'canceled';
+          item.stage = '已取消';
+          item.error = '';
+        } else {
+          item.status = 'failed';
+          item.stage = '转写失败';
+          item.error = String(e && e.message || e).slice(0, 200);
+        }
         item.updatedAt = Date.now();
-        log.warn(`[transcribe] 失败 ${path.basename(item.file)}：${item.error}`);
+        log.warn(`[transcribe] 失败 ${path.basename(item.file)}：${item.error || '已取消'}`);
         this._save();
       })
       .finally(() => {

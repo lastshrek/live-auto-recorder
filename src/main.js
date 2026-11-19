@@ -434,6 +434,13 @@ if (!app.requestSingleInstanceLock()) {
   });
   H('transcribe:state', () => ({ ok: true, ready: require('./core/transcribe-runtime').isReady(), ...sched.transcriber.snapshot() }));
 
+  // 取消转写任务。只收任务 id（不含路径），天然无越权风险。
+  H('transcribe:cancel', (_e, id) => {
+    const r = sched.transcribeCancel(id);
+    if (r && r.ok) pushState();
+    return r;
+  });
+
   H('settings:update', (_e, patch) => {
     if (patch && typeof patch.webhookUrl === 'string' && !webhookUrlSafe(patch.webhookUrl) && patch.webhookUrl) {
       return { ok: false, error: 'Webhook 地址无效(仅支持公网 http/https)' };

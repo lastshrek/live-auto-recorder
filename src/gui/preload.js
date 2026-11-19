@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   playRecording: (relative) => ipcRenderer.invoke('recordings:play',relative),
   transcribe: (relative) => ipcRenderer.invoke('transcribe:start', relative),
   transcribeState: () => ipcRenderer.invoke('transcribe:state'),
+  transcribeCancel: (id) => ipcRenderer.invoke('transcribe:cancel', id),
   saveSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   pickOutputDir: () => ipcRenderer.invoke('settings:pick-output-dir'),
   checkOutputDir: (dir) => ipcRenderer.invoke('settings:check-output-dir', dir),

@@ -140,11 +140,13 @@ test('界面渲染：running 进度写入进度条，空闲时显示上次结果
     classList: { add() {}, remove() {}, toggle() {} },
     querySelector() { return this._track || (this._track = element()); },
     appendChild(n) { this.children.push(n); }, append(...n) { this.children.push(...n); },
+    replaceChildren(...n) { this.children.length = 0; this.children.push(...n); },
   });
   const elements = {};
   const ctx = {
     state: {},
     $: id => elements[id] || (elements[id] = element()),
+    document: { createElement: () => element() },
   };
   vm.createContext(ctx);
   vm.runInContext(source, ctx);
